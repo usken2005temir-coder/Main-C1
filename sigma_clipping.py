@@ -3,7 +3,7 @@ import pandas as pd
 from astropy.stats import sigma_clip
 
 # ========================= LOAD FILE ============================
-FILENAME = "your_file.csv"  # <-- любой файл
+FILENAME = "APTEST.csv"  # <-- любой файл
 
 df = pd.read_csv(FILENAME, comment="#")
 
