@@ -1,0 +1,35 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary / cache
+*.cache
+*.tmp
+
+# Databases / service files
+*.db
+*.db-shm
+*.db-wal
+
+# Visual Studio indexes
+CopilotIndices/
+FileContentIndex/
+
+# Build / logs
+build/
+dist/
+*.log
