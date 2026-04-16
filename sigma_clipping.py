@@ -116,4 +116,7 @@ plt.title("Sigma clipping on residuals (3σ)")
 plt.grid(True)
 plt.legend()
 plt.tight_layout()
+
+plt.savefig("sigma_clipping_result.png", dpi=300)
+
 plt.show()
