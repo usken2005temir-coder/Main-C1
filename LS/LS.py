@@ -7,12 +7,17 @@ from astropy.timeseries import LombScargle
 # ============================================================
 # SETTINGS
 # ============================================================
-INPUT_FILE = "clean_data.csv"   # файл после sigma clipping
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+INPUT_FILE = os.path.join(PROJECT_DIR, "clean_data.csv")   # file after sigma clipping
+OUTPUT_DIR = SCRIPT_DIR
 
 MIN_PERIOD = 0.05               # days
 MAX_PERIOD = 100.0              # days
 SAMPLES_PER_PEAK = 20
 N_BEST_PEAKS = 5
+MIN_PEAK_SEPARATION_IN_WIDTHS = 5.0
 
 # Monte Carlo
 N_MONTE_CARLO = 1000
@@ -20,6 +25,10 @@ RANDOM_SEED = 42
 
 # Local search around the main LS peak for MC
 MC_LOCAL_WINDOW_IN_PEAK_WIDTHS = 5.0   # search window = +/- N * (1 / time_span)
+MC_GRID_SIZE = 5001
+
+# Set to True if you want interactive plot windows in addition to saved PNG files.
+SHOW_PLOTS = True
 
 # ============================================================
 # LOAD DATA
@@ -105,12 +114,14 @@ freq_resolution = 1.0 / time_span
 base_name = os.path.splitext(os.path.basename(INPUT_FILE))[0]
 ls_tag = f"{base_name}_LS_MC{N_MONTE_CARLO}_{MIN_PERIOD:.3f}-{MAX_PERIOD:.1f}d"
 
-OUTPUT_PLOT = f"{ls_tag}_periodogram.png"
-OUTPUT_PHASE = f"{ls_tag}_phase_curve.png"
-OUTPUT_PERIOD = f"{ls_tag}_best_period.txt"
-OUTPUT_TOP_PEAKS = f"{ls_tag}_top_peaks.csv"
-OUTPUT_MC_PERIODS = f"{ls_tag}_mc_periods.csv"
-OUTPUT_MC_HIST = f"{ls_tag}_mc_period_hist.png"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+OUTPUT_PLOT = os.path.join(OUTPUT_DIR, f"{ls_tag}_periodogram.png")
+OUTPUT_PHASE = os.path.join(OUTPUT_DIR, f"{ls_tag}_phase_curve.png")
+OUTPUT_PERIOD = os.path.join(OUTPUT_DIR, f"{ls_tag}_best_period.txt")
+OUTPUT_TOP_PEAKS = os.path.join(OUTPUT_DIR, f"{ls_tag}_top_peaks.csv")
+OUTPUT_MC_PERIODS = os.path.join(OUTPUT_DIR, f"{ls_tag}_mc_periods.csv")
+OUTPUT_MC_HIST = os.path.join(OUTPUT_DIR, f"{ls_tag}_mc_period_hist.png")
 
 # ============================================================
 # MAIN LOMB-SCARGLE
@@ -140,7 +151,20 @@ best_power = power[best_idx]
 # ============================================================
 # TOP PEAKS
 # ============================================================
-peak_indices = np.argsort(power)[::-1][:N_BEST_PEAKS]
+local_peak_mask = np.zeros_like(power, dtype=bool)
+local_peak_mask[1:-1] = (power[1:-1] > power[:-2]) & (power[1:-1] > power[2:])
+candidate_peak_indices = np.where(local_peak_mask)[0]
+candidate_peak_indices = candidate_peak_indices[np.argsort(power[candidate_peak_indices])[::-1]]
+
+peak_indices = []
+min_peak_separation = MIN_PEAK_SEPARATION_IN_WIDTHS * freq_resolution
+
+for idx in candidate_peak_indices:
+    if all(abs(frequency[idx] - frequency[old_idx]) >= min_peak_separation for old_idx in peak_indices):
+        peak_indices.append(idx)
+
+    if len(peak_indices) == N_BEST_PEAKS:
+        break
 
 top_peaks_data = []
 for i, idx in enumerate(peak_indices, start=1):
@@ -152,6 +176,27 @@ for i, idx in enumerate(peak_indices, start=1):
     })
 
 pd.DataFrame(top_peaks_data).to_csv(OUTPUT_TOP_PEAKS, index=False)
+
+
+def refine_peak_parabolic(freq_grid, power_grid, peak_idx):
+    """Return a sub-grid peak frequency using a quadratic fit around one grid maximum."""
+    if peak_idx <= 0 or peak_idx >= len(freq_grid) - 1:
+        return freq_grid[peak_idx]
+
+    x0 = freq_grid[peak_idx]
+    x = freq_grid[peak_idx - 1:peak_idx + 2] - x0
+    y_power = power_grid[peak_idx - 1:peak_idx + 2]
+    a, b, _ = np.polyfit(x, y_power, 2)
+
+    if a >= 0:
+        return freq_grid[peak_idx]
+
+    refined_frequency = x0 - b / (2.0 * a)
+
+    if freq_grid[peak_idx - 1] <= refined_frequency <= freq_grid[peak_idx + 1]:
+        return refined_frequency
+
+    return freq_grid[peak_idx]
 
 # ============================================================
 # MONTE CARLO: LOCAL SEARCH AROUND MAIN PEAK
@@ -167,15 +212,19 @@ mc_max_frequency = min(max_frequency, best_frequency + local_half_width)
 if mc_min_frequency >= mc_max_frequency:
     raise ValueError("Monte Carlo local frequency window collapsed.")
 
+mc_frequency_grid = np.linspace(mc_min_frequency, mc_max_frequency, MC_GRID_SIZE)
+
 print("=" * 70)
 print("Running Lomb-Scargle + Monte Carlo")
 print(f"Input file                : {INPUT_FILE}")
+print(f"Output directory          : {OUTPUT_DIR}")
 print(f"Points used               : {len(t)}")
 print(f"Main LS best period       : {best_period:.10f} days")
 print(f"Main LS best frequency    : {best_frequency:.10f} 1/day")
 print(f"Time span                 : {time_span:.10f} days")
 print(f"Frequency resolution ~    : {freq_resolution:.10f} 1/day")
 print(f"MC local frequency range  : {mc_min_frequency:.10f} .. {mc_max_frequency:.10f} 1/day")
+print(f"MC frequency grid size    : {MC_GRID_SIZE}")
 print(f"Monte Carlo iterations    : {N_MONTE_CARLO}")
 print("=" * 70)
 
@@ -185,14 +234,10 @@ for i in range(N_MONTE_CARLO):
     y_mc_centered = y_mc - np.mean(y_mc)
 
     ls_mc = LombScargle(t, y_mc_centered, dy=dy)
-    freq_mc, power_mc = ls_mc.autopower(
-        minimum_frequency=mc_min_frequency,
-        maximum_frequency=mc_max_frequency,
-        samples_per_peak=SAMPLES_PER_PEAK
-    )
+    power_mc = ls_mc.power(mc_frequency_grid)
 
     best_idx_mc = np.argmax(power_mc)
-    best_freq_mc = freq_mc[best_idx_mc]
+    best_freq_mc = refine_peak_parabolic(mc_frequency_grid, power_mc, best_idx_mc)
     best_period_mc = 1.0 / best_freq_mc
     mc_periods.append(best_period_mc)
 
@@ -214,8 +259,8 @@ period_p84 = np.percentile(mc_periods, 84)
 period_error = period_std_mc
 
 # asymmetric errors
-period_err_minus = best_period - period_p16
-period_err_plus = period_p84 - best_period
+period_err_minus = period_median_mc - period_p16
+period_err_plus = period_p84 - period_median_mc
 
 # ============================================================
 # SAVE MC PERIODS
@@ -240,8 +285,8 @@ print(f"Monte Carlo std                : {period_std_mc:.10f} days")
 print(f"16th percentile                : {period_p16:.10f} days")
 print(f"84th percentile                : {period_p84:.10f} days")
 print("-" * 70)
-print(f"FINAL RESULT (symmetric)       : P = {best_period:.10f} ± {period_error:.10f} days")
-print(f"FINAL RESULT (asymmetric)      : P = {best_period:.10f} (+{period_err_plus:.10f} / -{period_err_minus:.10f}) days")
+print(f"FINAL RESULT (symmetric)       : P = {best_period:.10f} +/- {period_error:.10f} days")
+print(f"MC PERCENTILE RESULT           : P = {period_median_mc:.10f} (+{period_err_plus:.10f} / -{period_err_minus:.10f}) days")
 print("=" * 70)
 
 print("\nTop peaks from the main LS search:")
@@ -259,6 +304,7 @@ for row in top_peaks_data:
 with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write("=== LOMB-SCARGLE RESULTS ===\n")
     f.write(f"Input file: {INPUT_FILE}\n")
+    f.write(f"Output directory: {OUTPUT_DIR}\n")
     f.write(f"Time column: {time_col}\n")
     f.write(f"Signal column: {signal_col}\n")
     f.write(f"Error column: {err_col}\n")
@@ -276,6 +322,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Monte Carlo iterations: {N_MONTE_CARLO}\n")
     f.write(f"MC local window half-width (1/day): {local_half_width:.10f}\n")
     f.write(f"MC frequency range (1/day): {mc_min_frequency:.10f} .. {mc_max_frequency:.10f}\n\n")
+    f.write(f"MC frequency grid size: {MC_GRID_SIZE}\n")
+    f.write("MC peak refinement: parabolic interpolation around the grid maximum\n\n")
 
     f.write("=== MONTE CARLO RESULTS ===\n")
     f.write(f"Mean period (days): {period_mean_mc:.10f}\n")
@@ -284,8 +332,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"16th percentile (days): {period_p16:.10f}\n")
     f.write(f"84th percentile (days): {period_p84:.10f}\n\n")
 
-    f.write(f"Final adopted result (symmetric): {best_period:.10f} ± {period_error:.10f} days\n")
-    f.write(f"Final adopted result (asymmetric): {best_period:.10f} (+{period_err_plus:.10f} / -{period_err_minus:.10f}) days\n")
+    f.write(f"Final adopted result (symmetric): {best_period:.10f} +/- {period_error:.10f} days\n")
+    f.write(f"MC percentile result: {period_median_mc:.10f} (+{period_err_plus:.10f} / -{period_err_minus:.10f}) days\n")
 
 # ============================================================
 # PLOT: LS PERIODOGRAM
@@ -300,7 +348,9 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 plt.savefig(OUTPUT_PLOT, dpi=300)
-plt.show()
+if SHOW_PLOTS:
+    plt.show()
+plt.close()
 
 # ============================================================
 # PLOT: PHASE-FOLDED CURVE
@@ -319,7 +369,9 @@ plt.xlim(0, 2)
 plt.legend()
 plt.tight_layout()
 plt.savefig(OUTPUT_PHASE, dpi=300)
-plt.show()
+if SHOW_PLOTS:
+    plt.show()
+plt.close()
 
 # ============================================================
 # PLOT: MONTE CARLO HISTOGRAM
@@ -337,15 +389,17 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 plt.savefig(OUTPUT_MC_HIST, dpi=300)
-plt.show()
+if SHOW_PLOTS:
+    plt.show()
+plt.close()
 
 # ============================================================
 # FINAL MESSAGE
 # ============================================================
 print("\nSaved files:")
-print(f"- {OUTPUT_PLOT}")
-print(f"- {OUTPUT_PHASE}")
-print(f"- {OUTPUT_PERIOD}")
-print(f"- {OUTPUT_TOP_PEAKS}")
-print(f"- {OUTPUT_MC_PERIODS}")
-print(f"- {OUTPUT_MC_HIST}")
+print(f"- {os.path.relpath(OUTPUT_PLOT, PROJECT_DIR)}")
+print(f"- {os.path.relpath(OUTPUT_PHASE, PROJECT_DIR)}")
+print(f"- {os.path.relpath(OUTPUT_PERIOD, PROJECT_DIR)}")
+print(f"- {os.path.relpath(OUTPUT_TOP_PEAKS, PROJECT_DIR)}")
+print(f"- {os.path.relpath(OUTPUT_MC_PERIODS, PROJECT_DIR)}")
+print(f"- {os.path.relpath(OUTPUT_MC_HIST, PROJECT_DIR)}")

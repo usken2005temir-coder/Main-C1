@@ -1,5 +1,6 @@
 === LOMB-SCARGLE RESULTS ===
-Input file: clean_data.csv
+Input file: C:\Users\Temirlan\source\repos\Main\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main\LS
 Time column: JD
 Signal column: Mag
 Error column: Mag Error
@@ -18,12 +19,15 @@ Monte Carlo iterations: 1000
 MC local window half-width (1/day): 0.0010825476
 MC frequency range (1/day): 16.3820488459 .. 16.3842139410
 
-=== MONTE CARLO RESULTS ===
-Mean period (days): 0.0610383922
-Median period (days): 0.0610383922
-Std period (days): 0.0000000000
-16th percentile (days): 0.0610383922
-84th percentile (days): 0.0610383922
+MC frequency grid size: 5001
+MC peak refinement: parabolic interpolation around the grid maximum
 
-Final adopted result (symmetric): 0.0610383922 ± 0.0000000000 days
-Final adopted result (asymmetric): 0.0610383922 (+0.0000000000 / -0.0000000000) days
+=== MONTE CARLO RESULTS ===
+Mean period (days): 0.0610383913
+Median period (days): 0.0610383913
+Std period (days): 0.0000000001
+16th percentile (days): 0.0610383912
+84th percentile (days): 0.0610383914
+
+Final adopted result (symmetric): 0.0610383922 +/- 0.0000000001 days
+MC percentile result: 0.0610383913 (+0.0000000001 / -0.0000000001) days
