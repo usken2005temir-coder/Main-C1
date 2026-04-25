@@ -1,0 +1,36 @@
+=== PDM RESULTS ===
+Input file: C:\Users\Temirlan\source\repos\Main\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main\PDM
+Search mode: local around LS period
+LS period source: C:\Users\Temirlan\source\repos\Main\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
+LS period (days): 0.0610383922
+Time column: JD
+Signal column: Mag
+Error column: Mag Error
+Number of points: 2410
+Time span (days): 4618.7346930001
+Min period searched (days): 0.05
+Max period searched (days): 100.0
+PDM bins: 10
+Minimum points per bin: 3
+
+Best PDM period (days): 0.0610383938
+Best PDM frequency (1/day): 16.3831309838
+Best PDM theta: 0.4126424079
+Difference from LS period (days): 0.0000000016
+
+=== MONTE CARLO SETTINGS ===
+Monte Carlo iterations: 1000
+Random seed: 42
+MC period range (days): 0.0598176259 .. 0.0622591616
+MC grid size: 401
+
+=== MONTE CARLO RESULTS ===
+Mean period (days): 0.0609128082
+Median period (days): 0.0610016781
+Std period (days): 0.0006523654
+16th percentile (days): 0.0601653397
+84th percentile (days): 0.0616551690
+
+Final adopted result (symmetric): 0.0610383938 +/- 0.0006523654 days
+MC percentile result: 0.0610016781 (+0.0006534909 / -0.0008363384) days
