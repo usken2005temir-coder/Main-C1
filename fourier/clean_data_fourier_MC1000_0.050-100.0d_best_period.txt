@@ -1,0 +1,38 @@
+=== FOURIER RESULTS ===
+Method: weighted sinusoidal Fourier fit at each trial frequency
+Input file: C:\Users\Temirlan\source\repos\M\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\M\fourier
+Search mode: local around LS period
+LS period source: C:\Users\Temirlan\source\repos\M\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
+LS period (days): 0.0610383922
+Time column: JD
+Signal column: Mag
+Error column: Mag Error
+Number of points: 2410
+Time span (days): 4618.7346930001
+Frequency resolution approx (1/day): 0.0002165095
+Min period searched (days): 0.0579864726
+Max period searched (days): 0.0640903118
+Fourier frequencies: 10001
+
+Best Fourier period (days): 0.0610383853
+Best Fourier frequency (1/day): 16.3831332619
+Best Fourier power: 0.4448416962
+Best semi-amplitude: 0.1959058559
+Difference from LS period (days): -0.0000000069
+
+=== MONTE CARLO SETTINGS ===
+Monte Carlo iterations: 1000
+Random seed: 42
+MC period range (days): 0.0598176176 .. 0.0622591530
+MC frequency grid size: 501
+
+=== MONTE CARLO RESULTS ===
+Mean period (days): 0.0610383759
+Median period (days): 0.0610383759
+Std period (days): 0.0000000000
+16th percentile (days): 0.0610383758
+84th percentile (days): 0.0610383759
+
+Final adopted result (symmetric): 0.0610383853 +/- 0.0000000000 days
+MC percentile result: 0.0610383759 (+0.0000000000 / -0.0000000000) days
