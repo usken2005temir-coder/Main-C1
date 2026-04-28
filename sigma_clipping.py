@@ -1,63 +1,220 @@
+import argparse
+import os
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from astropy.stats import sigma_clip
 
 # ============================================================
-# LOAD FILE
+# DEFAULT SETTINGS
 # ============================================================
-FILENAME = "APTEST/APTEST.csv"
-df = pd.read_csv(FILENAME, comment="#")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+INPUT_FILE = None
+OUTPUT_DIR = None
+
+SIGMA = 3.0
+WINDOW = 15
+SHOW_PLOTS = True
 
 # ============================================================
-# FIND REQUIRED COLUMNS
+# COMMAND LINE ARGUMENTS
 # ============================================================
-def find_column(columns, names):
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Sigma clipping for variable-star light curves."
+    )
+
+    parser.add_argument("--input", default=INPUT_FILE)
+    parser.add_argument("--output-dir", default=OUTPUT_DIR)
+
+    parser.add_argument("--time-col", default=None)
+    parser.add_argument("--signal-col", default=None)
+    parser.add_argument("--error-col", default=None)
+
+    parser.add_argument("--sigma", type=float, default=SIGMA)
+    parser.add_argument("--window", type=int, default=WINDOW)
+
+    parser.add_argument("--show-plots", action="store_true", default=SHOW_PLOTS)
+    parser.add_argument("--no-show-plots", action="store_false", dest="show_plots")
+
+    return parser.parse_args()
+
+# ============================================================
+# COLUMN DETECTION
+# ============================================================
+def normalize_name(name):
+    return "".join(ch.lower() for ch in str(name) if ch.isalnum())
+
+
+def find_column(columns, names, forbidden=None):
+    forbidden = forbidden or []
+
     for name in names:
+        name_norm = normalize_name(name)
+
         for col in columns:
-            if name.lower() in col.lower():
+            col_norm = normalize_name(col)
+            if name_norm == col_norm:
                 return col
+
+        for col in columns:
+            col_norm = normalize_name(col)
+            if name_norm in col_norm:
+                if not any(normalize_name(bad) in col_norm for bad in forbidden):
+                    return col
+
     return None
 
-time_col = find_column(df.columns, ["jd", "hjd", "mjd", "time"])
-mag_col = find_column(df.columns, ["mag", "magnitude"])
-flux_col = find_column(df.columns, ["flux"])
 
-if time_col is None:
-    raise ValueError("No time column found")
+def choose_columns(df, args):
+    columns = list(df.columns)
 
-if mag_col is None and flux_col is None:
-    raise ValueError("No MAG or FLUX column found")
+    time_col = args.time_col or find_column(
+        columns,
+        ["JD", "HJD", "BJD", "MJD", "time", "date"],
+        forbidden=["error", "err", "sigma"]
+    )
+
+    signal_col = args.signal_col or find_column(
+        columns,
+        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "Flux", "brightness"],
+        forbidden=["error", "err", "sigma", "limit"]
+    )
+
+    if time_col is None:
+        raise ValueError(f"No time column found. Available columns: {columns}")
+
+    if signal_col is None:
+        raise ValueError(f"No signal column found. Available columns: {columns}")
+
+    if args.error_col is not None:
+        err_col = args.error_col
+        if err_col not in df.columns:
+            raise ValueError(f"Error column '{err_col}' not found. Available columns: {columns}")
+    else:
+        signal_name = normalize_name(signal_col)
+
+        if "flux" in signal_name:
+            err_col = find_column(
+                columns,
+                ["Flux Error", "flux_err", "fluxerr", "e_flux", "dy", "yerr"]
+            )
+        else:
+            err_col = find_column(
+                columns,
+                ["Mag Error", "mag_err", "magerr", "e_mag", "merr", "dy", "yerr"]
+            )
+
+    return time_col, signal_col, err_col
+
+# ============================================================
+# PATH HELPERS
+# ============================================================
+def find_default_input():
+    candidates = [
+        os.path.join(SCRIPT_DIR, "APTEST", "APTEST.csv"),
+        os.path.join(os.getcwd(), "APTEST", "APTEST.csv"),
+    ]
+
+    for path in candidates:
+        if os.path.exists(path):
+            return os.path.abspath(path)
+
+    raise FileNotFoundError(
+        "Could not find APTEST/APTEST.csv. "
+        "Run this script from the project folder or pass --input path/to/file.csv."
+    )
+
+
+def infer_output_dir(input_path, output_dir):
+    if output_dir is not None:
+        return os.path.abspath(output_dir)
+
+    input_dir = os.path.dirname(os.path.abspath(input_path))
+
+    if os.path.basename(input_dir).lower() == "aptest":
+        return os.path.dirname(input_dir)
+
+    return input_dir
+
+# ============================================================
+# LOAD FILE
+# ============================================================
+args = parse_args()
+
+if args.sigma <= 0:
+    raise ValueError("sigma must be positive.")
+
+if args.window < 3:
+    raise ValueError("window must be at least 3.")
+
+input_file = os.path.abspath(args.input) if args.input is not None else find_default_input()
+output_dir = infer_output_dir(input_file, args.output_dir)
+
+df = pd.read_csv(input_file, comment="#")
+
+if df.empty:
+    raise ValueError("Input file is empty.")
+
+# ============================================================
+# FIND COLUMNS
+# ============================================================
+time_col, signal_col, err_col = choose_columns(df, args)
+
+print("=" * 70)
+print("Detected columns")
+print(f"Time column   : {time_col}")
+print(f"Signal column : {signal_col}")
+print(f"Error column  : {err_col if err_col is not None else 'not found'}")
+print("=" * 70)
 
 # ============================================================
 # PREPARE DATA
 # ============================================================
 work = df.copy()
 
-# if only FLUX is available, convert it to magnitude
-if mag_col is None:
-    work = work[work[flux_col] > 0].copy()
-    work["Mag"] = -2.5 * np.log10(work[flux_col])
-    mag_col = "Mag"
+work[time_col] = pd.to_numeric(work[time_col], errors="coerce")
+work[signal_col] = pd.to_numeric(work[signal_col], errors="coerce")
 
-work = work.rename(columns={time_col: "JD", mag_col: "Mag"})
+if err_col is not None:
+    work[err_col] = pd.to_numeric(work[err_col], errors="coerce")
+
+signal_name = normalize_name(signal_col)
+
+if "flux" in signal_name:
+    valid_flux = np.isfinite(work[signal_col]) & (work[signal_col] > 0)
+    work = work.loc[valid_flux].copy()
+
+    flux = work[signal_col].to_numpy()
+    work["Mag"] = -2.5 * np.log10(flux)
+
+    if err_col is not None:
+        flux_error = work[err_col].to_numpy()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            work["Mag Error"] = 2.5 / np.log(10.0) * flux_error / flux
+
+    mag_col = "Mag"
+else:
+    mag_col = signal_col
+
+rename_map = {time_col: "JD"}
+if mag_col != "Mag":
+    rename_map[mag_col] = "Mag"
+
+work = work.rename(columns=rename_map)
 work = work.dropna(subset=["JD", "Mag"]).copy()
 work = work.sort_values("JD").reset_index(drop=True)
 
-# ============================================================
-# CHECK RAW DATA
-# ============================================================
-print("Number of points before clipping:", len(work))
-print("Time column:", "JD")
-print("Signal column:", "Mag")
+if len(work) < 5:
+    raise ValueError("Too few valid data points for sigma clipping.")
 
 # ============================================================
 # BUILD LOCAL TREND
 # ============================================================
-WINDOW = 15
-
 work["Trend"] = work["Mag"].rolling(
-    window=WINDOW,
+    window=args.window,
     center=True,
     min_periods=1
 ).median()
@@ -67,11 +224,9 @@ work["Residual"] = work["Mag"] - work["Trend"]
 # ============================================================
 # SIGMA CLIPPING
 # ============================================================
-SIGMA = 3.0
-
 clipped = sigma_clip(
-    work["Residual"].values,
-    sigma=SIGMA,
+    work["Residual"].to_numpy(),
+    sigma=args.sigma,
     maxiters=None,
     cenfunc="median",
     stdfunc="mad_std"
@@ -82,17 +237,28 @@ mask_good = ~clipped.mask
 df_clean = work.loc[mask_good].copy()
 df_out = work.loc[~mask_good].copy()
 
-print("Number of clean points:", len(df_clean))
-print("Number of outliers:", len(df_out))
-
 # ============================================================
 # SAVE RESULTS
 # ============================================================
-df_clean.to_csv("clean_data.csv", index=False)
-df_out.to_csv("outliers.csv", index=False)
+os.makedirs(output_dir, exist_ok=True)
 
-print("Saved: clean_data.csv")
-print("Saved: outliers.csv")
+output_clean = os.path.join(output_dir, "clean_data.csv")
+output_outliers = os.path.join(output_dir, "outliers.csv")
+output_plot = os.path.join(output_dir, "sigma_clipping_result.png")
+
+df_clean.to_csv(output_clean, index=False)
+df_out.to_csv(output_outliers, index=False)
+
+print("=" * 70)
+print("Sigma clipping results")
+print(f"Input file                : {input_file}")
+print(f"Output directory          : {output_dir}")
+print(f"Sigma threshold           : {args.sigma}")
+print(f"Rolling median window     : {args.window} points")
+print(f"Number of points before   : {len(work)}")
+print(f"Number of clean points    : {len(df_clean)}")
+print(f"Number of outliers        : {len(df_out)}")
+print("=" * 70)
 
 # ============================================================
 # VISUALIZATION
@@ -106,9 +272,21 @@ plt.plot(work["JD"], work["Trend"], linewidth=1.5, label="Rolling median")
 plt.gca().invert_yaxis()
 plt.xlabel("JD")
 plt.ylabel("Magnitude")
-plt.title("Sigma clipping on residuals (3σ)")
-plt.grid(True)
+plt.title(f"Sigma clipping on residuals ({args.sigma:g}-sigma)")
+plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
-plt.savefig("sigma_clipping_result.png", dpi=300)
-plt.show()
+plt.savefig(output_plot, dpi=300)
+
+if args.show_plots:
+    plt.show()
+
+plt.close()
+
+# ============================================================
+# FINAL MESSAGE
+# ============================================================
+print("\nSaved files:")
+print(f"- {output_clean}")
+print(f"- {output_outliers}")
+print(f"- {output_plot}")

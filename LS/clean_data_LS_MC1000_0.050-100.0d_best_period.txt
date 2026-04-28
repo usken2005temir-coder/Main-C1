@@ -1,5 +1,5 @@
 === LOMB-SCARGLE RESULTS ===
-Input file: C:\Users\Temirlan\source\repos\Main\clean_data.csv
+Input file: C:\Users\Temirlan\source\repos\A\clean_data.csv
 Time column: JD
 Signal column: Mag
 Error column: Mag Error
@@ -10,14 +10,14 @@ Max period searched (days): 100.0
 
 Best period (days): 0.0610383922
 Best frequency (1/day): 16.3831313935
-Best power: 0.4475964591
+Best power: 0.4479557263
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 0.0610383913
-Median period (days): 0.0610383913
+Mean period (days): 0.0610383911
+Median period (days): 0.0610383911
 Std period (days): 0.0000000001
-16th percentile (days): 0.0610383912
-84th percentile (days): 0.0610383914
+16th percentile (days): 0.0610383910
+84th percentile (days): 0.0610383912
 
 Final adopted result: 0.0610383922 +/- 0.0000000001 days
-MC percentile result: 0.0610383913 (+0.0000000001 / -0.0000000001) days
+MC percentile result: 0.0610383911 (+0.0000000001 / -0.0000000001) days

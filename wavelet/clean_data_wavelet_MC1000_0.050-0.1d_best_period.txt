@@ -1,9 +1,9 @@
 === WAVELET RESULTS ===
 Method: Foster-style weighted wavelet regression / WWZ-like statistic
-Input file: C:\Users\Temirlan\source\repos\Ma\clean_data.csv
-Output directory: C:\Users\Temirlan\source\repos\Ma\wavelet
+Input file: C:\Users\Temirlan\source\repos\A\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\A\wavelet
 Search mode: local around LS period
-LS period source: C:\Users\Temirlan\source\repos\Ma\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
+LS period source: C:\Users\Temirlan\source\repos\A\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
 LS period (days): 0.0610383922
 Time column: JD
 Signal column: Mag
@@ -22,7 +22,7 @@ Wavelet time centers: 100
 
 Best wavelet period (days): 0.0610033432
 Best wavelet frequency (1/day): 16.3925442038
-Best global WWZ: 4.1105941419
+Best global WWZ: 4.0767382884
 Reference period for plots/MC (days): 0.0610383922
 Reference period source: LS reference period
 Difference from LS period (days): -0.0000350490
