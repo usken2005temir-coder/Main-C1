@@ -393,17 +393,54 @@ def wavelet_matrix(t, y, periods, time_centers, decay):
     return wwz, power, n_eff
 
 
-def best_wavelet_period(periods, wwz):
-    finite_counts = np.sum(np.isfinite(wwz), axis=1)
-    global_spectrum = np.full(len(periods), np.nan)
+def mean_finite_by_period(matrix):
+    finite_counts = np.sum(np.isfinite(matrix), axis=1)
+    global_spectrum = np.full(matrix.shape[0], np.nan)
     valid = finite_counts > 0
-    global_spectrum[valid] = np.nansum(wwz[valid], axis=1) / finite_counts[valid]
+    global_spectrum[valid] = np.nansum(matrix[valid], axis=1) / finite_counts[valid]
 
     if not np.any(np.isfinite(global_spectrum)):
         raise ValueError("Wavelet analysis failed: all global spectrum values are NaN.")
 
+    return global_spectrum
+
+
+def best_wavelet_period(periods, score_matrix):
+    global_spectrum = mean_finite_by_period(score_matrix)
+
     best_idx = np.nanargmax(global_spectrum)
     return periods[best_idx], global_spectrum[best_idx], global_spectrum
+
+
+def harmonic_phase_model(t, y, dy, period, n_points=500):
+    phase = (t % period) / period
+    angle = 2.0 * np.pi * phase
+
+    design = np.column_stack([
+        np.ones(len(t)),
+        np.cos(angle),
+        np.sin(angle),
+    ])
+
+    if dy is not None:
+        weights = 1.0 / (dy * dy)
+        weights = weights / np.nanmedian(weights)
+    else:
+        weights = np.ones(len(t))
+
+    lhs = design.T @ (weights[:, np.newaxis] * design)
+    rhs = design.T @ (weights * y)
+
+    try:
+        coeff = np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        coeff = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+
+    phase_grid = np.linspace(0.0, 2.0, n_points)
+    angle_grid = 2.0 * np.pi * phase_grid
+    model = coeff[0] + coeff[1] * np.cos(angle_grid) + coeff[2] * np.sin(angle_grid)
+
+    return phase_grid, model
 
 # ============================================================
 # LOAD FILE
@@ -564,7 +601,8 @@ wwz, power, n_eff = wavelet_matrix(
 )
 
 try:
-    best_period, best_wwz, global_spectrum = best_wavelet_period(periods, wwz)
+    best_period, best_local_power, global_power_spectrum = best_wavelet_period(periods, power)
+    global_wwz_spectrum = mean_finite_by_period(wwz)
 except ValueError:
     target_window = max(time_span / 20.0, np.median(np.diff(t)) * 5.0)
     effective_wavelet_decay = (np.median(periods) / (2.0 * np.pi * target_window)) ** 2
@@ -580,7 +618,12 @@ except ValueError:
         time_centers,
         effective_wavelet_decay
     )
-best_period, best_wwz, global_spectrum = best_wavelet_period(periods, wwz)
+
+    best_period, best_local_power, global_power_spectrum = best_wavelet_period(periods, power)
+    global_wwz_spectrum = mean_finite_by_period(wwz)
+
+best_idx_for_report = int(np.nanargmin(np.abs(periods - best_period)))
+best_wwz = global_wwz_spectrum[best_idx_for_report]
 
 best_frequency = 1.0 / best_period
 
@@ -634,7 +677,7 @@ for i in range(args.n_monte_carlo):
     y_mc = y + rng.normal(loc=0.0, scale=mc_noise_sigma, size=len(y))
     y_mc_centered = y_mc - np.mean(y_mc)
 
-    wwz_mc, _, _ = wavelet_matrix(
+    _, power_mc, _ = wavelet_matrix(
         t,
         y_mc_centered,
         mc_period_grid,
@@ -642,7 +685,7 @@ for i in range(args.n_monte_carlo):
         effective_wavelet_decay
     )
 
-    best_period_mc, _, _ = best_wavelet_period(mc_period_grid, wwz_mc)
+    best_period_mc, _, _ = best_wavelet_period(mc_period_grid, power_mc)
     mc_periods.append(best_period_mc)
 
     if (i + 1) % 100 == 0 or (i + 1) == args.n_monte_carlo:
@@ -669,7 +712,8 @@ period_err_plus = period_p84 - period_median_mc
 pd.DataFrame({
     "period_days": periods,
     "frequency_per_day": 1.0 / periods,
-    "global_wwz": global_spectrum
+    "mean_local_wavelet_power": global_power_spectrum,
+    "mean_wwz_like_statistic": global_wwz_spectrum
 }).to_csv(OUTPUT_GLOBAL_CSV, index=False)
 
 pd.DataFrame({
@@ -696,7 +740,8 @@ print("\n" + "=" * 70)
 print("FINAL WAVELET RESULTS")
 print(f"Best wavelet period            : {best_period:.10f} days")
 print(f"Best wavelet frequency         : {best_frequency:.10f} 1/day")
-print(f"Best global WWZ                : {best_wwz:.10f}")
+print(f"Best mean local wavelet power  : {best_local_power:.10f}")
+print(f"WWZ-like statistic at best     : {best_wwz:.10f}")
 print(f"Reference period for plots/MC  : {reference_period:.10f} days ({reference_label})")
 if ls_period is not None:
     print(f"Difference from LS period      : {best_period - ls_period:.10f} days")
@@ -716,7 +761,7 @@ print("=" * 70)
 # ============================================================
 with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write("=== WAVELET RESULTS ===\n")
-    f.write("Method: Foster-style weighted wavelet regression / WWZ-like statistic\n")
+    f.write("Method: Foster-style local weighted Fourier / WWZ-like wavelet diagnostic\n")
     f.write(f"Input file: {args.input}\n")
     f.write(f"Output directory: {args.output_dir}\n")
     f.write(f"Search mode: {search_mode}\n")
@@ -739,7 +784,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
 
     f.write(f"Best wavelet period (days): {best_period:.10f}\n")
     f.write(f"Best wavelet frequency (1/day): {best_frequency:.10f}\n")
-    f.write(f"Best global WWZ: {best_wwz:.10f}\n")
+    f.write(f"Best mean local wavelet power: {best_local_power:.10f}\n")
+    f.write(f"WWZ-like statistic at best period: {best_wwz:.10f}\n")
     f.write(f"Reference period for plots/MC (days): {reference_period:.10f}\n")
     f.write(f"Reference period source: {reference_label}\n")
     if ls_period is not None:
@@ -770,13 +816,13 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
 # PLOT: WAVELET MAP
 # ============================================================
 time_centers_plot = time_centers - t.min()
-wwz_plot = smooth_nan_matrix(wwz, args.map_smooth_periods, args.map_smooth_times)
+power_plot = smooth_nan_matrix(power, args.map_smooth_periods, args.map_smooth_times)
 
 plt.figure(figsize=(12, 7))
-finite_wwz = wwz_plot[np.isfinite(wwz_plot)]
-if len(finite_wwz) > 0:
-    color_min = np.nanpercentile(finite_wwz, 10)
-    color_max = np.nanpercentile(finite_wwz, 98)
+finite_power = power_plot[np.isfinite(power_plot)]
+if len(finite_power) > 0:
+    color_min = np.nanpercentile(finite_power, 5)
+    color_max = np.nanpercentile(finite_power, 99)
 else:
     color_min = None
     color_max = None
@@ -784,19 +830,23 @@ else:
 mesh = plt.pcolormesh(
     time_centers_plot,
     periods,
-    wwz_plot,
+    power_plot,
     shading="auto",
-    cmap="viridis",
+    cmap="magma",
     vmin=color_min,
     vmax=color_max
 )
-plt.colorbar(mesh, label="WWZ-like wavelet power")
-plt.axhline(best_period, color="black", linestyle="--", linewidth=1.0, label=f"Best wavelet = {best_period:.6f} d")
-if ls_period is not None and period_min <= ls_period <= period_max:
-    plt.axhline(ls_period, color="white", linestyle=":", linewidth=1.4, label=f"LS period = {ls_period:.6f} d")
+plt.colorbar(mesh, label="Local wavelet power")
+plt.axhline(
+    reference_period,
+    color="white",
+    linestyle=":",
+    linewidth=1.8,
+    label=f"Reference period = {reference_period:.6f} d"
+)
 plt.xlabel(f"Time - {t.min():.5f} (days)")
 plt.ylabel("Period (days)")
-plt.title("Wavelet time-period map")
+plt.title("Wavelet diagnostic map: local power near the reference period")
 if period_grid_mode == "logarithmic":
     plt.yscale("log")
 plt.legend(loc="upper right")
@@ -812,13 +862,13 @@ plt.close()
 # PLOT: GLOBAL WAVELET SPECTRUM
 # ============================================================
 plt.figure(figsize=(10, 6))
-plt.plot(periods, global_spectrum, linewidth=1.4)
+plt.plot(periods, global_power_spectrum, linewidth=1.4)
 plt.axvline(best_period, linestyle="--", label=f"Best wavelet = {best_period:.10f} d")
 if ls_period is not None and period_min <= ls_period <= period_max:
     plt.axvline(ls_period, linestyle=":", label=f"LS period = {ls_period:.10f} d")
 plt.xlabel("Period (days)")
-plt.ylabel("Mean WWZ-like power")
-plt.title("Global wavelet spectrum")
+plt.ylabel("Mean local wavelet power")
+plt.title("Global wavelet power spectrum")
 if period_grid_mode == "logarithmic":
     plt.xscale("log")
 plt.grid(True, alpha=0.3)
@@ -836,10 +886,12 @@ plt.close()
 # ============================================================
 def save_phase_curve(period_value, label_text, output_path):
     phase = (t % period_value) / period_value
+    phase_model, y_model = harmonic_phase_model(t, y, dy, period_value)
 
     plt.figure(figsize=(9, 6))
     plt.scatter(phase, y, s=18, alpha=0.8, label="Data")
     plt.scatter(phase + 1.0, y, s=18, alpha=0.8, label="Repeated phase")
+    plt.plot(phase_model, y_model, color="black", linewidth=2.0, label="Weighted sine fit")
     plt.xlabel("Phase")
     plt.ylabel(signal_col)
     plt.title(f"Phase-folded curve ({label_text} = {period_value:.6f} d)")

@@ -1,5 +1,5 @@
 === WAVELET RESULTS ===
-Method: Foster-style weighted wavelet regression / WWZ-like statistic
+Method: Foster-style local weighted Fourier / WWZ-like wavelet diagnostic
 Input file: C:\Users\Temirlan\source\repos\A\clean_data.csv
 Output directory: C:\Users\Temirlan\source\repos\A\wavelet
 Search mode: local around LS period
@@ -20,12 +20,13 @@ Effective wavelet decay: 1.8940311180046343e-09
 Wavelet periods: 240
 Wavelet time centers: 100
 
-Best wavelet period (days): 0.0610033432
-Best wavelet frequency (1/day): 16.3925442038
-Best global WWZ: 4.0767382884
+Best wavelet period (days): 0.0624337778
+Best wavelet frequency (1/day): 16.0169708604
+Best mean local wavelet power: 0.0340433550
+WWZ-like statistic at best period: 2.9303472875
 Reference period for plots/MC (days): 0.0610383922
 Reference period source: LS reference period
-Difference from LS period (days): -0.0000350490
+Difference from LS period (days): 0.0013953856
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
