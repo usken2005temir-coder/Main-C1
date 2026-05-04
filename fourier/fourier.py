@@ -473,6 +473,29 @@ def evaluate_fourier_design(design, y):
 
     return power, amplitude
 
+
+def fourier_model_at_period(t_relative, y, dy, period):
+    weights = make_weights(dy)
+    if weights is None:
+        weights = np.ones_like(y)
+
+    angle = 2.0 * np.pi * t_relative / period
+    design = np.column_stack([
+        np.ones(len(t_relative)),
+        np.cos(angle),
+        np.sin(angle),
+    ])
+
+    lhs = design.T @ (weights[:, np.newaxis] * design)
+    rhs = design.T @ (weights * y)
+
+    try:
+        coeff = np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        coeff = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+
+    return design @ coeff
+
 # ============================================================
 # LOAD FILE
 # ============================================================
@@ -687,12 +710,20 @@ mc_design = prepare_fourier_design(t_relative, dy, mc_frequency_grid, args.chunk
 
 if dy is not None:
     mc_noise_sigma = dy
+    mc_noise_level = np.nanmedian(mc_noise_sigma)
+    mc_noise_source = f"measured photometric errors from '{err_col}'"
 else:
-    mc_noise_sigma = np.full_like(y, robust_scatter(y_centered))
+    best_model = fourier_model_at_period(t_relative, y, None, best_period)
+    residuals = y - best_model
+    mc_noise_level = robust_scatter(residuals)
+    mc_noise_sigma = np.full_like(y, mc_noise_level)
+    mc_noise_source = "estimated from residual scatter around the best Fourier sine model"
 
 print("=" * 70)
 print("Running Fourier Monte Carlo")
 print(f"Monte Carlo iterations    : {args.n_monte_carlo}")
+print(f"MC noise model            : {mc_noise_source}")
+print(f"MC typical noise level    : {mc_noise_level:.10f}")
 print(f"MC period range           : {mc_min_period:.10f} .. {mc_max_period:.10f} days")
 print(f"MC frequency grid size    : {len(mc_frequency_grid)}")
 print("=" * 70)
@@ -805,8 +836,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Random seed: {args.seed}\n")
     f.write(f"MC period range (days): {mc_min_period:.10f} .. {mc_max_period:.10f}\n")
     f.write(f"MC frequency grid size: {len(mc_frequency_grid)}\n")
-    if err_col is None:
-        f.write("MC noise model: no error column found; robust scatter was used\n")
+    f.write(f"MC noise model: {mc_noise_source}\n")
+    f.write(f"MC typical noise level: {mc_noise_level:.10f}\n")
     f.write("\n")
 
     f.write("=== MONTE CARLO RESULTS ===\n")

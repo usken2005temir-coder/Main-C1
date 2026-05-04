@@ -442,6 +442,33 @@ def harmonic_phase_model(t, y, dy, period, n_points=500):
 
     return phase_grid, model
 
+
+def harmonic_model_at_times(t, y, dy, period):
+    phase = (t % period) / period
+    angle = 2.0 * np.pi * phase
+
+    design = np.column_stack([
+        np.ones(len(t)),
+        np.cos(angle),
+        np.sin(angle),
+    ])
+
+    if dy is not None:
+        weights = 1.0 / (dy * dy)
+        weights = weights / np.nanmedian(weights)
+    else:
+        weights = np.ones(len(t))
+
+    lhs = design.T @ (weights[:, np.newaxis] * design)
+    rhs = design.T @ (weights * y)
+
+    try:
+        coeff = np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        coeff = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+
+    return design @ coeff
+
 # ============================================================
 # LOAD FILE
 # ============================================================
@@ -563,7 +590,6 @@ wavelet_tag = f"{base_name}_wavelet_MC{args.n_monte_carlo}_{period_min:.3f}-{per
 OUTPUT_MAP = os.path.join(args.output_dir, f"{wavelet_tag}_map.png")
 OUTPUT_GLOBAL = os.path.join(args.output_dir, f"{wavelet_tag}_global_spectrum.png")
 OUTPUT_PHASE = os.path.join(args.output_dir, f"{wavelet_tag}_phase_curve.png")
-OUTPUT_PHASE_WAVELET = os.path.join(args.output_dir, f"{wavelet_tag}_phase_curve_wavelet.png")
 OUTPUT_MC_HIST = os.path.join(args.output_dir, f"{wavelet_tag}_mc_period_hist.png")
 OUTPUT_PERIOD = os.path.join(args.output_dir, f"{wavelet_tag}_best_period.txt")
 OUTPUT_GLOBAL_CSV = os.path.join(args.output_dir, f"{wavelet_tag}_global_spectrum.csv")
@@ -632,7 +658,7 @@ if ls_period is not None and period_min <= ls_period <= period_max:
     reference_label = "LS reference period"
 else:
     reference_period = best_period
-    reference_label = "best wavelet period"
+    reference_label = "strongest map period"
 
 ridge_periods = np.full(len(time_centers), np.nan)
 ridge_wwz = np.full(len(time_centers), np.nan)
@@ -662,12 +688,20 @@ mc_time_grid = make_time_grid(t, args.mc_time_centers)
 
 if dy is not None:
     mc_noise_sigma = dy
+    mc_noise_level = np.nanmedian(mc_noise_sigma)
+    mc_noise_source = f"measured photometric errors from '{err_col}'"
 else:
-    mc_noise_sigma = np.full_like(y, robust_scatter(y_centered))
+    reference_model = harmonic_model_at_times(t, y_centered, None, reference_period)
+    residuals = y_centered - reference_model
+    mc_noise_level = robust_scatter(residuals)
+    mc_noise_sigma = np.full_like(y, mc_noise_level)
+    mc_noise_source = "estimated from residual scatter around the reference-period harmonic model"
 
 print("=" * 70)
 print("Running Wavelet Monte Carlo")
 print(f"Monte Carlo iterations    : {args.n_monte_carlo}")
+print(f"MC noise model            : {mc_noise_source}")
+print(f"MC typical noise level    : {mc_noise_level:.10f}")
 print(f"MC period range           : {mc_min_period:.10f} .. {mc_max_period:.10f} days")
 print(f"MC period grid size       : {len(mc_period_grid)}")
 print(f"MC time centers           : {len(mc_time_grid)}")
@@ -738,10 +772,10 @@ matrix_df.to_csv(OUTPUT_MATRIX_CSV, index=False)
 # ============================================================
 print("\n" + "=" * 70)
 print("FINAL WAVELET RESULTS")
-print(f"Best wavelet period            : {best_period:.10f} days")
-print(f"Best wavelet frequency         : {best_frequency:.10f} 1/day")
-print(f"Best mean local wavelet power  : {best_local_power:.10f}")
-print(f"WWZ-like statistic at best     : {best_wwz:.10f}")
+print(f"Strongest map period           : {best_period:.10f} days")
+print(f"Strongest map frequency        : {best_frequency:.10f} 1/day")
+print(f"Strongest mean local power     : {best_local_power:.10f}")
+print(f"WWZ-like statistic there       : {best_wwz:.10f}")
 print(f"Reference period for plots/MC  : {reference_period:.10f} days ({reference_label})")
 if ls_period is not None:
     print(f"Difference from LS period      : {best_period - ls_period:.10f} days")
@@ -782,10 +816,10 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Wavelet periods: {len(periods)}\n")
     f.write(f"Wavelet time centers: {len(time_centers)}\n\n")
 
-    f.write(f"Best wavelet period (days): {best_period:.10f}\n")
-    f.write(f"Best wavelet frequency (1/day): {best_frequency:.10f}\n")
-    f.write(f"Best mean local wavelet power: {best_local_power:.10f}\n")
-    f.write(f"WWZ-like statistic at best period: {best_wwz:.10f}\n")
+    f.write(f"Strongest map period (days): {best_period:.10f}\n")
+    f.write(f"Strongest map frequency (1/day): {best_frequency:.10f}\n")
+    f.write(f"Strongest mean local wavelet power: {best_local_power:.10f}\n")
+    f.write(f"WWZ-like statistic at strongest map period: {best_wwz:.10f}\n")
     f.write(f"Reference period for plots/MC (days): {reference_period:.10f}\n")
     f.write(f"Reference period source: {reference_label}\n")
     if ls_period is not None:
@@ -798,8 +832,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"MC period range (days): {mc_min_period:.10f} .. {mc_max_period:.10f}\n")
     f.write(f"MC period grid size: {len(mc_period_grid)}\n")
     f.write(f"MC time centers: {len(mc_time_grid)}\n")
-    if err_col is None:
-        f.write("MC noise model: no error column found; robust scatter was used\n")
+    f.write(f"MC noise model: {mc_noise_source}\n")
+    f.write(f"MC typical noise level: {mc_noise_level:.10f}\n")
     f.write("\n")
 
     f.write("=== MONTE CARLO RESULTS ===\n")
@@ -863,7 +897,7 @@ plt.close()
 # ============================================================
 plt.figure(figsize=(10, 6))
 plt.plot(periods, global_power_spectrum, linewidth=1.4)
-plt.axvline(best_period, linestyle="--", label=f"Best wavelet = {best_period:.10f} d")
+plt.axvline(best_period, linestyle="--", label=f"Strongest map period = {best_period:.10f} d")
 if ls_period is not None and period_min <= ls_period <= period_max:
     plt.axvline(ls_period, linestyle=":", label=f"LS period = {ls_period:.10f} d")
 plt.xlabel("Period (days)")
@@ -913,9 +947,6 @@ def save_phase_curve(period_value, label_text, output_path):
 
 save_phase_curve(reference_period, reference_label, OUTPUT_PHASE)
 
-if abs(best_period - reference_period) > 1e-12:
-    save_phase_curve(best_period, "best wavelet period", OUTPUT_PHASE_WAVELET)
-
 # ============================================================
 # PLOT: MONTE CARLO HISTOGRAM
 # ============================================================
@@ -923,7 +954,7 @@ plt.figure(figsize=(10, 6))
 plt.hist(mc_periods, bins=30, alpha=0.8)
 plt.axvline(reference_period, linestyle="--", label=f"Reference = {reference_period:.10f} d")
 if abs(best_period - reference_period) > 1e-12:
-    plt.axvline(best_period, linestyle="-", alpha=0.7, label=f"Best wavelet = {best_period:.10f} d")
+    plt.axvline(best_period, linestyle="-", alpha=0.7, label=f"Strongest map period = {best_period:.10f} d")
 plt.axvline(period_mean_mc, linestyle="-.", label=f"MC mean = {period_mean_mc:.10f} d")
 plt.axvline(period_p16, linestyle=":", label=f"P16 = {period_p16:.10f} d")
 plt.axvline(period_p84, linestyle=":", label=f"P84 = {period_p84:.10f} d")
@@ -952,8 +983,6 @@ print("\nSaved files:")
 print(f"- {os.path.relpath(OUTPUT_MAP, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_GLOBAL, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_PHASE, PROJECT_DIR)}")
-if abs(best_period - reference_period) > 1e-12:
-    print(f"- {os.path.relpath(OUTPUT_PHASE_WAVELET, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_MC_HIST, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_PERIOD, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_GLOBAL_CSV, PROJECT_DIR)}")

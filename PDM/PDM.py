@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument("--mc-grid-size", type=int, default=MC_GRID_SIZE)
 
     parser.add_argument("--show-plots", action="store_true", default=SHOW_PLOTS)
+    parser.add_argument("--no-show-plots", action="store_false", dest="show_plots")
 
     return parser.parse_args()
 
@@ -153,6 +154,27 @@ def robust_scatter(values):
         scatter = 1.0
 
     return scatter
+
+
+def phase_bin_residual_scatter(t, y, period, n_bins, min_points_per_bin):
+    phase = (t % period) / period
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    model = np.full_like(y, np.nan, dtype=float)
+    fallback_level = np.nanmedian(y)
+
+    for i in range(n_bins):
+        if i == n_bins - 1:
+            in_bin = (phase >= bin_edges[i]) & (phase <= bin_edges[i + 1])
+        else:
+            in_bin = (phase >= bin_edges[i]) & (phase < bin_edges[i + 1])
+
+        if np.count_nonzero(in_bin) >= min_points_per_bin:
+            model[in_bin] = np.nanmedian(y[in_bin])
+
+    model = np.where(np.isfinite(model), model, fallback_level)
+    residuals = y - model
+
+    return robust_scatter(residuals[np.isfinite(residuals)])
 
 
 def is_magnitude_column(column_name):
@@ -453,8 +475,18 @@ mc_period_grid = make_period_grid(mc_min_period, mc_max_period, args.mc_grid_siz
 
 if dy is not None:
     mc_noise_sigma = dy
+    mc_noise_level = np.nanmedian(mc_noise_sigma)
+    mc_noise_source = f"measured photometric errors from '{err_col}'"
 else:
-    mc_noise_sigma = np.full_like(y, robust_scatter(y_centered))
+    mc_noise_level = phase_bin_residual_scatter(
+        t,
+        y_centered,
+        best_period,
+        args.n_bins,
+        args.min_points_per_bin
+    )
+    mc_noise_sigma = np.full_like(y, mc_noise_level)
+    mc_noise_source = "estimated from residual scatter around the best PDM phase-bin model"
 
 print("=" * 70)
 print("Running PDM + Monte Carlo")
@@ -466,7 +498,9 @@ print(f"LS period                 : {ls_period if ls_period is not None else 'no
 print(f"PDM search range          : {local_min_period:.10f} .. {local_max_period:.10f} days")
 print(f"Time column               : {time_col}")
 print(f"Signal column             : {signal_col}")
-print(f"Error column              : {err_col if err_col is not None else 'none; using robust scatter for MC'}")
+print(f"Error column              : {err_col if err_col is not None else 'not found'}")
+print(f"MC noise model            : {mc_noise_source}")
+print(f"MC typical noise level    : {mc_noise_level:.10f}")
 print(f"Points used               : {len(t)}")
 print(f"Time span                 : {time_span:.10f} days")
 print(f"PDM best period           : {best_period:.10f} days")
@@ -567,8 +601,8 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Random seed: {args.seed}\n")
     f.write(f"MC period range (days): {mc_min_period:.10f} .. {mc_max_period:.10f}\n")
     f.write(f"MC grid size: {args.mc_grid_size}\n")
-    if err_col is None:
-        f.write("MC noise model: no error column found; robust scatter was used\n")
+    f.write(f"MC noise model: {mc_noise_source}\n")
+    f.write(f"MC typical noise level: {mc_noise_level:.10f}\n")
     f.write("\n")
 
     f.write("=== MONTE CARLO RESULTS ===\n")
@@ -665,4 +699,3 @@ print(f"- {os.path.relpath(OUTPUT_PERIOD, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_TOP_MINIMA, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_MC_PERIODS, PROJECT_DIR)}")
 print(f"- {os.path.relpath(OUTPUT_MC_HIST, PROJECT_DIR)}")
-

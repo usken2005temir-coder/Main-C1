@@ -1,8 +1,8 @@
 === PDM RESULTS ===
-Input file: C:\Users\Temirlan\source\repos\A\clean_data.csv
-Output directory: C:\Users\Temirlan\source\repos\A\PDM
+Input file: C:\Users\Temirlan\source\repos\Main-C5\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main-C5\PDM
 Search mode: local around LS period
-LS period source: C:\Users\Temirlan\source\repos\A\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
+LS period source: C:\Users\Temirlan\source\repos\Main-C5\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
 LS period (days): 0.0610383922
 Time column: JD
 Signal column: Mag
@@ -24,6 +24,8 @@ Monte Carlo iterations: 1000
 Random seed: 42
 MC period range (days): 0.0598176259 .. 0.0622591616
 MC grid size: 401
+MC noise model: measured photometric errors from 'Mag Error'
+MC typical noise level: 0.0018000000
 
 === MONTE CARLO RESULTS ===
 Mean period (days): 0.0609726503
