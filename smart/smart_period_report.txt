@@ -1,0 +1,37 @@
+=== SMART VARIABLE-STAR PERIOD ANALYSIS ===
+Input file: C:\Users\Temirlan\source\repos\Main-C9\clean_data.csv
+Time column: JD
+Signal column: Mag
+Error column: Mag Error
+Search range: 0.05 .. 100.0 days
+
+=== METHOD RESULTS ===
+Lomb-Scargle: period = 0.0610383911 days (87.8953 min), power = 0.4479557263
+PDM: period = 0.0610383889 days (87.8953 min), theta = 0.3634760196
+Weighted Fourier: period = 0.0610383615 days (87.8952 min), power = 0.3757074878
+
+=== DATA DIAGNOSTICS ===
+Median time step: 0.9881987004 days
+Maximum time gap: 162.9548980002 days
+Gap ratio: 164.9009
+Phase coverage: 1.0000
+Sine power: 0.4452
+Second harmonic gain: 0.0337
+Second harmonic gain fraction: 0.0757
+
+Noise model: measured photometric errors from 'Mag Error'
+Typical noise level: 0.0018000000
+
+=== SMART RECOMMENDATION ===
+Recommended main method: Lomb-Scargle
+Reason: The time sampling has large gaps or incomplete phase coverage, so Lomb-Scargle is the best main method for uneven observations.
+Adopted period source: Lomb-Scargle
+Adopted period: 0.0610383911 days
+Adopted period in automatic units: 87.8953 min
+Automatic period unit for plots: minutes
+
+=== METHOD LOGIC ===
+If the data have large gaps or incomplete phase coverage, LS is preferred.
+If the sampling is continuous and the signal is sine-like, weighted Fourier is preferred.
+If the phase curve is not sine-like, PDM is preferred.
+Wavelet analysis remains a stability check in time, not the only final period source.

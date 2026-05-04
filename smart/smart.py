@@ -30,8 +30,8 @@ N_PHASE_BINS = 20
 LS_SAMPLES_PER_PEAK = 20
 SHOW_PLOTS = True
 
-# Once LS has found the global candidate, the other methods validate it locally.
-# A narrow window prevents nearby aliases from replacing the shared candidate.
+# Each method first performs an independent global search. Then PDM and Fourier
+# refine around their own candidates, not around one fixed example star period.
 LOCAL_WINDOW_FRACTION = 0.01
 
 
@@ -378,7 +378,8 @@ def pdm_theta(t, y, period, n_bins):
 
 def run_pdm_local(t, y, reference_period, min_period, max_period, n_grid, n_bins, local_window_fraction):
     if reference_period is None or not np.isfinite(reference_period):
-        periods = np.linspace(min_period, max_period, n_grid)
+        frequency = np.linspace(1.0 / max_period, 1.0 / min_period, n_grid)
+        periods = 1.0 / frequency
     else:
         half_width = max(reference_period * local_window_fraction, min_period * 0.02)
         period_min = max(min_period, reference_period - half_width)
@@ -494,19 +495,17 @@ def choose_adopted_period(results, recommendation):
     ]
 
     recommended_result = results.get(recommendation["method"])
+    relative_spread = np.nan
 
     if len(finite_periods) >= 2:
         median_period = float(np.median(finite_periods))
         relative_spread = (max(finite_periods) - min(finite_periods)) / median_period
 
-        if relative_spread < 0.01:
-            return median_period, "consensus", relative_spread
-
     if recommended_result is not None:
-        return float(recommended_result["period"]), recommendation["method"], np.nan
+        return float(recommended_result["period"]), recommendation["method"], relative_spread
 
     if finite_periods:
-        return float(finite_periods[0]), "fallback", np.nan
+        return float(finite_periods[0]), "fallback", relative_spread
 
     raise ValueError("No valid period estimate was produced.")
 
@@ -514,20 +513,47 @@ def choose_adopted_period(results, recommendation):
 # ============================================================
 # PLOTS
 # ============================================================
-def plot_method_comparison(results, adopted_period, output_path, show_plots):
+def plot_method_comparison(results, adopted_period, adopted_source, output_path, show_plots):
     unit_info = choose_period_unit(adopted_period)
     names = []
-    periods = []
+    period_values = []
+    period_days = []
 
     for key in ["Lomb-Scargle", "PDM", "Weighted Fourier"]:
         result = results.get(key)
         if result is not None and np.isfinite(result["period"]):
             names.append(key.replace("Weighted ", ""))
-            periods.append(result["period"] * unit_info["factor"])
+            period_values.append(result["period"] * unit_info["factor"])
+            period_days.append(result["period"])
 
-    plt.figure(figsize=(9, 5.4))
-    plt.scatter(names, periods, s=95, zorder=3)
-    plt.axhline(adopted_period * unit_info["factor"], linestyle="--", alpha=0.8, label="Adopted period")
+    adopted_value = adopted_period * unit_info["factor"]
+
+    plt.figure(figsize=(10, 5.8))
+    plt.scatter(names, period_values, s=95, zorder=3)
+    plt.axhline(
+        adopted_value,
+        linestyle="--",
+        alpha=0.85,
+        label=f"Adopted period ({adopted_source})"
+    )
+
+    for i, (value, period_day) in enumerate(zip(period_values, period_days)):
+        delta_seconds = (period_day - adopted_period) * 24.0 * 60.0 * 60.0
+        plt.annotate(
+            f"{value:.4f}\nDelta {delta_seconds:+.3f} s",
+            (i, value),
+            xytext=(0, 12),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    if period_values:
+        spread = max(period_values) - min(period_values)
+        y_margin = max(spread * 0.75, abs(adopted_value) * 1e-6, 1e-6)
+        plt.ylim(min(period_values + [adopted_value]) - y_margin, max(period_values + [adopted_value]) + y_margin * 1.8)
+
     plt.ylabel(unit_info["label"])
     plt.title("Smart method comparison")
     plt.grid(True, axis="y", alpha=0.3)
@@ -717,28 +743,57 @@ print("=" * 72)
 ls_result = run_lomb_scargle(t, y, dy, args.min_period, args.max_period, args.ls_samples_per_peak)
 reference_period = ls_result["period"] if ls_result is not None else None
 
-pdm_result = run_pdm_local(
+pdm_global_result = run_pdm_local(
     t,
     y,
-    reference_period,
+    None,
     args.min_period,
     args.max_period,
     args.n_pdm_grid,
     args.n_phase_bins,
     args.local_window_fraction,
 )
-fourier_result = run_fourier_local(
+pdm_result = (
+    run_pdm_local(
+        t,
+        y,
+        pdm_global_result["period"],
+        args.min_period,
+        args.max_period,
+        args.n_pdm_grid,
+        args.n_phase_bins,
+        args.local_window_fraction,
+    )
+    if pdm_global_result is not None
+    else None
+)
+
+fourier_global_result = run_fourier_local(
     t,
     y,
     dy,
-    reference_period,
+    None,
     args.min_period,
     args.max_period,
     args.n_grid,
     args.local_window_fraction,
 )
+fourier_result = (
+    run_fourier_local(
+        t,
+        y,
+        dy,
+        fourier_global_result["period"],
+        args.min_period,
+        args.max_period,
+        args.n_grid,
+        args.local_window_fraction,
+    )
+    if fourier_global_result is not None
+    else None
+)
 
-results = {
+independent_results = {
     "Lomb-Scargle": ls_result,
     "PDM": pdm_result,
     "Weighted Fourier": fourier_result,
@@ -774,8 +829,49 @@ recommendation = recommend_method(
     diagnostics["sine_power"],
     diagnostics["harmonic_gain_fraction"],
 )
-adopted_period, adopted_source, relative_spread = choose_adopted_period(results, recommendation)
+adopted_period, adopted_source, independent_relative_spread = choose_adopted_period(independent_results, recommendation)
 unit_info = choose_period_unit(adopted_period)
+
+# After the main method chooses the adopted period, validate that period with the
+# other diagnostics in a narrow local window. This keeps the smart output readable
+# and avoids confusing aliases from broad global scans.
+pdm_validation_result = run_pdm_local(
+    t,
+    y,
+    adopted_period,
+    args.min_period,
+    args.max_period,
+    args.n_pdm_grid,
+    args.n_phase_bins,
+    args.local_window_fraction,
+)
+fourier_validation_result = run_fourier_local(
+    t,
+    y,
+    dy,
+    adopted_period,
+    args.min_period,
+    args.max_period,
+    args.n_grid,
+    args.local_window_fraction,
+)
+
+results = {
+    "Lomb-Scargle": ls_result,
+    "PDM": pdm_validation_result,
+    "Weighted Fourier": fourier_validation_result,
+}
+
+validation_periods = [
+    result["period"]
+    for result in results.values()
+    if result is not None and np.isfinite(result["period"])
+]
+if len(validation_periods) >= 2:
+    validation_median = float(np.median(validation_periods))
+    relative_spread = (max(validation_periods) - min(validation_periods)) / validation_median
+else:
+    relative_spread = np.nan
 
 OUTPUT_REPORT = os.path.join(args.output_dir, "smart_period_report.txt")
 OUTPUT_COMPARISON = os.path.join(args.output_dir, "smart_method_comparison.png")
@@ -793,7 +889,7 @@ write_report(
     adopted_period,
     adopted_source,
 )
-plot_method_comparison(results, adopted_period, OUTPUT_COMPARISON, args.show_plots)
+plot_method_comparison(results, adopted_period, adopted_source, OUTPUT_COMPARISON, args.show_plots)
 plot_phase_curve(t, y, dy, adopted_period, OUTPUT_PHASE, signal_col, args.show_plots)
 plot_diagnostics(diagnostics, OUTPUT_DIAGNOSTICS, args.show_plots)
 plot_periodogram_panels(results, adopted_period, OUTPUT_PERIODOGRAMS, args.show_plots)
