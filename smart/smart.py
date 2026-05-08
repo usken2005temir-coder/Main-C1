@@ -34,6 +34,7 @@ SHOW_PLOTS = True
 # Each method first performs an independent global search. Then PDM and Fourier
 # refine around their own candidates, not around one fixed example star period.
 LOCAL_WINDOW_FRACTION = 0.01
+EDGE_PERIOD_FRACTION = 0.02
 
 
 def clean_old_outputs(output_dir, keep_paths, patterns):
@@ -371,6 +372,7 @@ def run_lomb_scargle(t, y, dy, min_period, max_period, samples_per_peak):
         "x": 1.0 / frequency,
         "y": power,
         "score_label": "power",
+        "edge_candidate": is_period_near_search_edge(best_period, min_period, max_period),
     }
 
 
@@ -410,6 +412,7 @@ def run_fourier_local(t, y, dy, reference_period, min_period, max_period, n_grid
         "x": periods,
         "y": powers,
         "score_label": "power",
+        "edge_candidate": is_period_near_search_edge(best_period, min_period, max_period),
     }
 
 
@@ -466,12 +469,23 @@ def run_pdm_local(t, y, reference_period, min_period, max_period, n_grid, n_bins
         "x": periods,
         "y": theta,
         "score_label": "theta",
+        "edge_candidate": is_period_near_search_edge(best_period, min_period, max_period),
     }
 
 
 # ============================================================
 # DATA DIAGNOSTICS
 # ============================================================
+def is_period_near_search_edge(period, min_period, max_period, edge_fraction=EDGE_PERIOD_FRACTION):
+    if not np.isfinite(period):
+        return True
+
+    lower_edge = min_period * (1.0 + edge_fraction)
+    upper_edge = max_period * (1.0 - edge_fraction)
+
+    return period <= lower_edge or period >= upper_edge
+
+
 def phase_coverage(t, period, n_bins):
     phase = (t / period) % 1.0
     counts, _ = np.histogram(phase, bins=n_bins, range=(0.0, 1.0))
@@ -524,21 +538,21 @@ def recommend_method(gap_ratio, coverage, sine_power, harmonic_gain_fraction):
     gappy = gap_ratio > 20.0 or coverage < 0.75
     non_sinusoidal = harmonic_gain_fraction > 0.25 or sine_power < 0.15
 
-    if non_sinusoidal:
-        return {
-            "method": "PDM",
-            "reason": (
-                "The folded curve is not well described by a simple sine model, "
-                "so phase-dispersion minimization is the safest main criterion."
-            ),
-        }
-
     if gappy:
         return {
             "method": "Lomb-Scargle",
             "reason": (
                 "The time sampling has large gaps or incomplete phase coverage, "
                 "so Lomb-Scargle is the best main method for uneven observations."
+            ),
+        }
+
+    if non_sinusoidal:
+        return {
+            "method": "PDM",
+            "reason": (
+                "The folded curve is not well described by a simple sine model, "
+                "so phase-dispersion minimization is the safest main criterion."
             ),
         }
 
@@ -557,8 +571,15 @@ def choose_adopted_period(results, recommendation):
         for result in results.values()
         if result is not None and np.isfinite(result["period"])
     ]
+    usable_results = {
+        name: result
+        for name, result in results.items()
+        if result is not None
+        and np.isfinite(result["period"])
+        and not result.get("edge_candidate", False)
+    }
 
-    recommended_result = results.get(recommendation["method"])
+    recommended_result = usable_results.get(recommendation["method"])
     relative_spread = np.nan
 
     if len(finite_periods) >= 2:
@@ -568,8 +589,13 @@ def choose_adopted_period(results, recommendation):
     if recommended_result is not None:
         return float(recommended_result["period"]), recommendation["method"], relative_spread
 
+    for fallback_method in ["Lomb-Scargle", "PDM", "Weighted Fourier"]:
+        fallback_result = usable_results.get(fallback_method)
+        if fallback_result is not None:
+            return float(fallback_result["period"]), f"{fallback_method} fallback", relative_spread
+
     if finite_periods:
-        return float(finite_periods[0]), "fallback", relative_spread
+        return float(finite_periods[0]), "edge fallback", relative_spread
 
     raise ValueError("No valid period estimate was produced.")
 
@@ -749,10 +775,11 @@ def write_report(output_path, args, columns, results, diagnostics, recommendatio
             if result is None:
                 f.write(f"{key}: not available\n")
                 continue
+            edge_note = " [near search boundary]" if result.get("edge_candidate", False) else ""
             f.write(
                 f"{key}: period = {result['period']:.10f} days "
                 f"({format_period(result['period'], unit_info)}), "
-                f"{result['score_label']} = {result['score']:.10f}\n"
+                f"{result['score_label']} = {result['score']:.10f}{edge_note}\n"
             )
 
         f.write("\n=== DATA DIAGNOSTICS ===\n")
@@ -989,7 +1016,8 @@ for key in ["Lomb-Scargle", "PDM", "Weighted Fourier"]:
     if result is None:
         print(f"- {key}: not available")
     else:
-        print(f"- {key}: {result['period']:.10f} days = {format_period(result['period'], unit_info)}")
+        edge_note = " [near search boundary]" if result.get("edge_candidate", False) else ""
+        print(f"- {key}: {result['period']:.10f} days = {format_period(result['period'], unit_info)}{edge_note}")
 
 print("\nSmart diagnostics:")
 print(f"- Gap ratio                  : {diagnostics['gap_ratio']:.4f}")

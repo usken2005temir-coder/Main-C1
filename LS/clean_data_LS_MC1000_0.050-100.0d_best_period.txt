@@ -1,36 +1,36 @@
 === LOMB-SCARGLE RESULTS ===
-Input file: C:\Users\Temirlan\source\repos\M5\clean_data.csv
-Output directory: C:\Users\Temirlan\source\repos\M5\LS
+Input file: C:\Users\Temirlan\source\repos\Main-C15\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main-C15\LS
 Time column: JD
 Signal column: Mag
 Signal label: V/R
 Error column: none
-Number of points: 61
-Time span (days): 1442.0054919897
+Number of points: 47
+Time span (days): 1498.9099846198
 Min period searched (days): 0.05
 Max period searched (days): 100.0
 Samples per peak: 20
 
-Best period (days): 0.9890501435
-Best frequency (1/day): 1.0110710833
-Best power: 0.7533467138
+Best period (days): 0.9984152851
+Best frequency (1/day): 1.0015872302
+Best power: 0.4394190738
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
 Random seed: 42
-MC local window half-width (1/day): 0.0034673932
-MC frequency range (1/day): 1.0076036901 .. 1.0145384765
+MC local window half-width (1/day): 0.0033357574
+MC frequency range (1/day): 0.9982514729 .. 1.0049229876
 MC frequency grid size: 5001
 MC peak refinement: parabolic interpolation around the grid maximum
 MC noise model: estimated from residual scatter around the best LS model
-MC typical noise level: 0.0783506536
+MC typical noise level: 0.0272316902
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 0.9894618324
-Median period (days): 0.9890578000
-Std period (days): 0.0010444170
-16th percentile (days): 0.9890111816
-84th percentile (days): 0.9907264362
+Mean period (days): 0.9971781325
+Median period (days): 0.9971315953
+Std period (days): 0.0001437878
+16th percentile (days): 0.9971315952
+84th percentile (days): 0.9974231075
 
-Final adopted result (symmetric): 0.9890501435 +/- 0.0010444170 days
-MC percentile result: 0.9890578000 (+0.0016686362 / -0.0000466184) days
+Final adopted result (symmetric): 0.9984152851 +/- 0.0001437878 days
+MC percentile result: 0.9971315953 (+0.0002915122 / -0.0000000000) days
