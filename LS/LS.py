@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument("--error-col", default=None, help="Optional signal error column name.")
 
     parser.add_argument("--min-period", type=float, default=0.05, help="Minimum period in days.")
-    parser.add_argument("--max-period", type=float, default=100.0, help="Maximum period in days.")
+    parser.add_argument("--max-period", type=float, default=300.0, help="Maximum period in days.")
     parser.add_argument("--samples-per-peak", type=int, default=20)
     parser.add_argument("--n-best-peaks", type=int, default=5)
     parser.add_argument("--peak-separation-widths", type=float, default=5.0)

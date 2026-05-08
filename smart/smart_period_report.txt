@@ -1,34 +1,34 @@
 === SMART VARIABLE-STAR PERIOD ANALYSIS ===
-Input file: C:\Users\Temirlan\source\repos\Main-C15\clean_data.csv
+Input file: C:\Users\Temirlan\source\rep\clean_data.csv
 Time column: JD
 Signal column: Mag
 Signal label: RV
 Error column: none
-Search range: 0.05 .. 100.0 days
+Search range: 0.05 .. 300.0 days
 
 === METHOD RESULTS ===
-Lomb-Scargle: period = 0.9945161861 days (0.99451619 d), power = 0.6456209201
-PDM: period = 0.9954442332 days (0.99544423 d), theta = 0.1163723416
-Weighted Fourier: period = 0.9945162349 days (0.99451623 d), power = 0.6483614547
+Lomb-Scargle: period = 178.9389225963 days (178.93892260 d), power = 0.6526838231
+PDM: period = 179.2729295415 days (179.27292954 d), theta = 0.1572824246
+Weighted Fourier: period = 178.9362535377 days (178.93625354 d), power = 0.6530705150
 
 === DATA DIAGNOSTICS ===
 Median time step: 5.9990999997 days
 Maximum time gap: 323.0551000000 days
 Gap ratio: 53.8506
-Phase coverage: 0.4500
-Sine power: 0.6484
-Second harmonic gain: 0.0017
-Second harmonic gain fraction: 0.0027
+Phase coverage: 0.5500
+Sine power: 0.6531
+Second harmonic gain: 0.0145
+Second harmonic gain fraction: 0.0222
 
 Noise model: estimated from residual scatter around the reference-period sine model
-Typical noise level: 5.9825087753
+Typical noise level: 8.0942629912
 
 === SMART RECOMMENDATION ===
 Recommended main method: Lomb-Scargle
 Reason: The time sampling has large gaps or incomplete phase coverage, so Lomb-Scargle is the best main method for uneven observations.
 Adopted period source: Lomb-Scargle
-Adopted period: 0.9945161861 days
-Adopted period in automatic units: 0.99451619 d
+Adopted period: 178.9389225963 days
+Adopted period in automatic units: 178.93892260 d
 Automatic period unit for plots: days
 
 === METHOD LOGIC ===
