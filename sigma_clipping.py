@@ -188,6 +188,40 @@ def infer_output_dir(input_path, output_dir):
 # ============================================================
 # TABLE READING
 # ============================================================
+def is_float_like(value):
+    try:
+        float(str(value).strip())
+        return True
+    except ValueError:
+        return False
+
+
+def assign_headerless_columns(table):
+    n_columns = len(table.columns)
+
+    if n_columns == 2:
+        table.columns = ["JD", "V/R"]
+    elif n_columns == 3:
+        table.columns = ["JD", "Mag", "Mag Error"]
+    else:
+        table.columns = [f"col_{index + 1}" for index in range(n_columns)]
+
+    return table
+
+
+def read_headerless_table(path):
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension == ".csv":
+        table = pd.read_csv(path, comment="#", header=None)
+    elif extension == ".tsv":
+        table = pd.read_csv(path, comment="#", sep="\t", header=None)
+    else:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python", header=None)
+
+    return assign_headerless_columns(table)
+
+
 def read_input_table(path):
     extension = os.path.splitext(path)[1].lower()
 
@@ -203,6 +237,9 @@ def read_input_table(path):
 
     if len(table.columns) == 1:
         table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    if len(table.columns) >= 2 and all(is_float_like(column) for column in table.columns):
+        table = read_headerless_table(path)
 
     return table
 
