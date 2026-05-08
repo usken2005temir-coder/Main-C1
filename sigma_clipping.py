@@ -81,6 +81,9 @@ def display_label_for_signal(column_name, converted_from_flux=False):
     if normalized == "vr":
         return "V/R"
 
+    if normalized in {"rv", "radialvelocity", "velocity"}:
+        return "RV"
+
     return name
 
 
@@ -100,7 +103,11 @@ def choose_columns(df, args):
 
     signal_col = args.signal_col or find_column(
         columns,
-        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "V/R", "VR", "Flux", "brightness", "V", "R", "I"],
+        [
+            "Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag",
+            "V/R", "VR", "RV", "Radial Velocity", "Velocity",
+            "Flux", "brightness", "Signal", "Value", "V", "R", "I",
+        ],
         forbidden=["error", "err", "sigma", "limit", "lambda", "wave", "wavelength"]
     )
 
@@ -125,7 +132,11 @@ def choose_columns(df, args):
         else:
             err_col = find_column(
                 columns,
-                ["Mag Error", "mag_err", "magerr", "e_mag", "merr", "dy", "yerr"]
+                [
+                    "Mag Error", "mag_err", "magerr", "e_mag", "merr",
+                    "RV Error", "rv_err", "rverr", "e_rv", "velocity_error", "vel_err",
+                    "Signal Error", "signal_err", "dy", "yerr",
+                ]
             )
 
     return time_col, signal_col, err_col
@@ -196,13 +207,32 @@ def is_float_like(value):
         return False
 
 
-def assign_headerless_columns(table):
+def infer_headerless_signal_name(path):
+    file_name = normalize_name(os.path.splitext(os.path.basename(path))[0])
+
+    if "vr" in file_name:
+        return "V/R"
+
+    if "rv" in file_name or "radialvelocity" in file_name:
+        return "RV"
+
+    if "flux" in file_name:
+        return "Flux"
+
+    if "mag" in file_name or "phot" in file_name:
+        return "Mag"
+
+    return "Signal"
+
+
+def assign_headerless_columns(table, path):
     n_columns = len(table.columns)
+    signal_name = infer_headerless_signal_name(path)
 
     if n_columns == 2:
-        table.columns = ["JD", "V/R"]
+        table.columns = ["JD", signal_name]
     elif n_columns == 3:
-        table.columns = ["JD", "Mag", "Mag Error"]
+        table.columns = ["JD", signal_name, f"{signal_name} Error"]
     else:
         table.columns = [f"col_{index + 1}" for index in range(n_columns)]
 
@@ -219,7 +249,7 @@ def read_headerless_table(path):
     else:
         table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python", header=None)
 
-    return assign_headerless_columns(table)
+    return assign_headerless_columns(table, path)
 
 
 def read_input_table(path):

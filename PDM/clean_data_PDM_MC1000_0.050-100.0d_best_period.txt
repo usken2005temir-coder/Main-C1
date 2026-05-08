@@ -3,37 +3,37 @@ Input file: C:\Users\Temirlan\source\repos\Main-C15\clean_data.csv
 Output directory: C:\Users\Temirlan\source\repos\Main-C15\PDM
 Search mode: local around LS period
 LS period source: C:\Users\Temirlan\source\repos\Main-C15\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
-LS period (days): 0.9984152851
+LS period (days): 0.9944987186
 Time column: JD
 Signal column: Mag
-Signal label: V/R
+Signal label: RV
 Error column: none
-Number of points: 47
-Time span (days): 1498.9099846198
+Number of points: 34
+Time span (days): 1413.1141999997
 Min period searched (days): 0.05
 Max period searched (days): 100.0
 PDM bins: 10
 Minimum points per bin: 3
 
-Best PDM period (days): 0.9925448375
-Best PDM frequency (1/day): 1.0075111594
-Best PDM theta: 0.2411565810
-Difference from LS period (days): -0.0058704476
+Best PDM period (days): 0.9888906542
+Best PDM frequency (1/day): 1.0112341498
+Best PDM theta: 0.2221202758
+Difference from LS period (days): -0.0056080644
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
 Random seed: 42
-MC period range (days): 0.9726939407 .. 1.0123957342
+MC period range (days): 0.9691128412 .. 1.0086684673
 MC grid size: 401
 MC noise model: estimated from residual scatter around the best PDM phase-bin model
-MC typical noise level: 0.0159968748
+MC typical noise level: 7.4437639500
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 0.9951842103
-Median period (days): 0.9933563121
-Std period (days): 0.0032924730
-16th percentile (days): 0.9925441735
-84th percentile (days): 1.0011482592
+Mean period (days): 0.9904931914
+Median period (days): 0.9889240135
+Std period (days): 0.0085042962
+16th percentile (days): 0.9848130277
+84th percentile (days): 1.0026496840
 
-Final adopted result (symmetric): 0.9925448375 +/- 0.0032924730 days
-MC percentile result: 0.9933563121 (+0.0077919471 / -0.0008121387) days
+Final adopted result (symmetric): 0.9888906542 +/- 0.0085042962 days
+MC percentile result: 0.9889240135 (+0.0137256704 / -0.0041109859) days

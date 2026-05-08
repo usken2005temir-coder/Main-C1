@@ -4,38 +4,38 @@ Input file: C:\Users\Temirlan\source\repos\Main-C15\clean_data.csv
 Output directory: C:\Users\Temirlan\source\repos\Main-C15\fourier
 Search mode: local around LS period
 LS period source: C:\Users\Temirlan\source\repos\Main-C15\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
-LS period (days): 0.9984152851
+LS period (days): 0.9944987186
 Time column: JD
 Signal column: Mag
-Signal label: V/R
+Signal label: RV
 Error column: none
-Number of points: 47
-Time span (days): 1498.9099846198
-Frequency resolution approx (1/day): 0.0006671515
-Min period searched (days): 0.9484945208
-Max period searched (days): 1.0483360494
+Number of points: 34
+Time span (days): 1413.1141999997
+Frequency resolution approx (1/day): 0.0007076569
+Min period searched (days): 0.9447737827
+Max period searched (days): 1.0442236545
 Fourier frequencies: 10001
 
-Best Fourier period (days): 0.9984169780
-Best Fourier frequency (1/day): 1.0015855319
-Best Fourier power: 0.4394188459
-Best semi-amplitude: 0.0808658948
-Difference from LS period (days): 0.0000016929
+Best Fourier period (days): 0.9945162269
+Best Fourier frequency (1/day): 1.0055140107
+Best Fourier power: 0.6483428407
+Best semi-amplitude: 18.5965603836
+Difference from LS period (days): 0.0000175083
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
 Random seed: 42
-MC period range (days): 0.9784486385 .. 1.0183853176
+MC period range (days): 0.9746259024 .. 1.0144065514
 MC frequency grid size: 501
 MC noise model: estimated from residual scatter around the best Fourier sine model
-MC typical noise level: 0.0273035614
+MC typical noise level: 5.9832987143
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 0.9973899370
-Median period (days): 0.9983952677
-Std period (days): 0.0042988994
-16th percentile (days): 0.9962285629
-84th percentile (days): 0.9984351440
+Mean period (days): 0.9960490498
+Median period (days): 0.9945188548
+Std period (days): 0.0044793615
+16th percentile (days): 0.9917247045
+84th percentile (days): 1.0028288518
 
-Final adopted result (symmetric): 0.9984169780 +/- 0.0042988994 days
-MC percentile result: 0.9983952677 (+0.0000398762 / -0.0021667048) days
+Final adopted result (symmetric): 0.9945162269 +/- 0.0044793615 days
+MC percentile result: 0.9945188548 (+0.0083099970 / -0.0027941503) days
