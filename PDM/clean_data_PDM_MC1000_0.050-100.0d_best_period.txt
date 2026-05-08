@@ -1,38 +1,39 @@
 === PDM RESULTS ===
-Input file: C:\Users\Temirlan\source\repos\Main-C5\clean_data.csv
-Output directory: C:\Users\Temirlan\source\repos\Main-C5\PDM
+Input file: C:\Users\Temirlan\source\repos\M5\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\M5\PDM
 Search mode: local around LS period
-LS period source: C:\Users\Temirlan\source\repos\Main-C5\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
-LS period (days): 0.0610383922
+LS period source: C:\Users\Temirlan\source\repos\M5\LS\clean_data_LS_MC1000_0.050-100.0d_best_period.txt
+LS period (days): 0.9890501435
 Time column: JD
 Signal column: Mag
-Error column: Mag Error
-Number of points: 2410
-Time span (days): 4618.7346930001
+Signal label: V/R
+Error column: none
+Number of points: 61
+Time span (days): 1442.0054919897
 Min period searched (days): 0.05
 Max period searched (days): 100.0
 PDM bins: 10
 Minimum points per bin: 3
 
-Best PDM period (days): 0.0610383937
-Best PDM frequency (1/day): 16.3831309865
-Best PDM theta: 0.4115737389
-Difference from LS period (days): 0.0000000015
+Best PDM period (days): 1.0047830181
+Best PDM frequency (1/day): 0.9952397502
+Best PDM theta: 0.1461074002
+Difference from LS period (days): 0.0157328746
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
 Random seed: 42
-MC period range (days): 0.0598176259 .. 0.0622591616
+MC period range (days): 0.9846873578 .. 1.0248786785
 MC grid size: 401
-MC noise model: measured photometric errors from 'Mag Error'
-MC typical noise level: 0.0018000000
+MC noise model: estimated from residual scatter around the best PDM phase-bin model
+MC typical noise level: 0.0489258000
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 0.0609726503
-Median period (days): 0.0610336640
-Std period (days): 0.0006347958
-16th percentile (days): 0.0602511914
-84th percentile (days): 0.0617890628
+Mean period (days): 1.0017177114
+Median period (days): 1.0037865888
+Std period (days): 0.0053491129
+16th percentile (days): 0.9908424758
+84th percentile (days): 1.0047967752
 
-Final adopted result (symmetric): 0.0610383937 +/- 0.0006347958 days
-MC percentile result: 0.0610336640 (+0.0007553988 / -0.0007824726) days
+Final adopted result (symmetric): 1.0047830181 +/- 0.0053491129 days
+MC percentile result: 1.0037865888 (+0.0010101864 / -0.0129441130) days

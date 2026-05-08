@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 import re
 
@@ -39,6 +40,23 @@ MAP_SMOOTH_PERIOD_BINS = 3
 MAP_SMOOTH_TIME_BINS = 5
 
 SHOW_PLOTS = True
+
+
+def clean_old_outputs(output_dir, keep_paths, patterns):
+    keep = {os.path.abspath(path) for path in keep_paths}
+    removed = 0
+
+    for pattern in patterns:
+        for path in glob.glob(os.path.join(output_dir, pattern)):
+            path_abs = os.path.abspath(path)
+            if path_abs in keep or not os.path.isfile(path_abs):
+                continue
+
+            os.remove(path_abs)
+            removed += 1
+
+    return removed
+
 
 # ============================================================
 # COMMAND LINE ARGUMENTS
@@ -127,8 +145,8 @@ def choose_columns(df, args):
 
     signal_col = args.signal_col or find_column(
         columns,
-        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "Flux", "brightness"],
-        forbidden=["error", "err", "sigma", "limit"]
+        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "V/R", "VR", "Flux", "brightness", "V", "R", "I"],
+        forbidden=["error", "err", "sigma", "limit", "lambda", "wave", "wavelength"]
     )
 
     if time_col is None:
@@ -160,6 +178,25 @@ def choose_columns(df, args):
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
+def read_input_table(path):
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension == ".csv":
+        table = pd.read_csv(path, comment="#")
+    elif extension == ".tsv":
+        table = pd.read_csv(path, comment="#", sep="\t")
+    else:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=None, engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    return table
+
+
 def robust_scatter(values):
     median = np.median(values)
     mad = np.median(np.abs(values - median))
@@ -176,6 +213,33 @@ def robust_scatter(values):
 
 def is_magnitude_column(column_name):
     name = normalize_name(column_name)
+    return "mag" in name or "magnitude" in name
+
+
+def display_label_for_signal(column_name):
+    name = str(column_name)
+    normalized = normalize_name(name)
+
+    if "mag" in normalized or "magnitude" in normalized:
+        return "Magnitude"
+
+    if normalized == "vr":
+        return "V/R"
+
+    return name
+
+
+def display_label_from_dataframe(df, signal_col):
+    if "Signal Label" in df.columns:
+        labels = df["Signal Label"].dropna().astype(str).unique()
+        if len(labels) > 0 and labels[0].strip():
+            return labels[0]
+
+    return display_label_for_signal(signal_col)
+
+
+def is_magnitude_label(label):
+    name = normalize_name(label)
     return "mag" in name or "magnitude" in name
 
 
@@ -474,7 +538,7 @@ def harmonic_model_at_times(t, y, dy, period):
 # ============================================================
 args = parse_args()
 
-df = pd.read_csv(args.input, comment="#")
+df = read_input_table(args.input)
 
 if df.empty:
     raise ValueError("Input file is empty.")
@@ -483,11 +547,13 @@ if df.empty:
 # FIND COLUMNS
 # ============================================================
 time_col, signal_col, err_col = choose_columns(df, args)
+signal_label = display_label_from_dataframe(df, signal_col)
 
 print("=" * 70)
 print("Detected columns")
 print(f"Time column   : {time_col}")
 print(f"Signal column : {signal_col}")
+print(f"Signal label  : {signal_label}")
 print(f"Error column  : {err_col if err_col is not None else 'not found'}")
 print("=" * 70)
 
@@ -803,6 +869,7 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"LS period (days): {ls_period if ls_period is not None else 'not available'}\n")
     f.write(f"Time column: {time_col}\n")
     f.write(f"Signal column: {signal_col}\n")
+    f.write(f"Signal label: {signal_label}\n")
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
@@ -927,11 +994,11 @@ def save_phase_curve(period_value, label_text, output_path):
     plt.scatter(phase + 1.0, y, s=18, alpha=0.8, label="Repeated phase")
     plt.plot(phase_model, y_model, color="black", linewidth=2.0, label="Weighted sine fit")
     plt.xlabel("Phase")
-    plt.ylabel(signal_col)
+    plt.ylabel(signal_label)
     plt.title(f"Phase-folded curve ({label_text} = {period_value:.6f} d)")
     plt.grid(True, alpha=0.3)
 
-    if is_magnitude_column(signal_col):
+    if is_magnitude_label(signal_label):
         plt.gca().invert_yaxis()
 
     plt.xlim(0, 2)
@@ -979,13 +1046,38 @@ plt.close()
 # ============================================================
 # FINAL MESSAGE
 # ============================================================
+current_outputs = [
+    OUTPUT_MAP,
+    OUTPUT_GLOBAL,
+    OUTPUT_PHASE,
+    OUTPUT_MC_HIST,
+    OUTPUT_PERIOD,
+    OUTPUT_GLOBAL_CSV,
+    OUTPUT_RIDGE_CSV,
+    OUTPUT_MC_PERIODS,
+    OUTPUT_MATRIX_CSV,
+]
+
+removed_old_outputs = clean_old_outputs(
+    args.output_dir,
+    current_outputs,
+    [
+        "*_wavelet_MC*_map.png",
+        "*_wavelet_MC*_global_spectrum.png",
+        "*_wavelet_MC*_phase_curve.png",
+        "*_wavelet_MC*_phase_curve_wavelet.png",
+        "*_wavelet_MC*_mc_period_hist.png",
+        "*_wavelet_MC*_best_period.txt",
+        "*_wavelet_MC*_global_spectrum.csv",
+        "*_wavelet_MC*_ridge.csv",
+        "*_wavelet_MC*_mc_periods.csv",
+        "*_wavelet_MC*_matrix.csv",
+    ],
+)
+
+if removed_old_outputs > 0:
+    print(f"\nRemoved old wavelet output files: {removed_old_outputs}")
+
 print("\nSaved files:")
-print(f"- {os.path.relpath(OUTPUT_MAP, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_GLOBAL, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_PHASE, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_MC_HIST, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_PERIOD, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_GLOBAL_CSV, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_RIDGE_CSV, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_MC_PERIODS, PROJECT_DIR)}")
-print(f"- {os.path.relpath(OUTPUT_MATRIX_CSV, PROJECT_DIR)}")
+for file_path in current_outputs:
+    print(f"- {os.path.relpath(file_path, PROJECT_DIR)}")

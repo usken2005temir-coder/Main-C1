@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 
 import numpy as np
@@ -10,6 +11,22 @@ from astropy.timeseries import LombScargle
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+
+def clean_old_outputs(output_dir, keep_paths, patterns):
+    keep = {os.path.abspath(path) for path in keep_paths}
+    removed = 0
+
+    for pattern in patterns:
+        for path in glob.glob(os.path.join(output_dir, pattern)):
+            path_abs = os.path.abspath(path)
+            if path_abs in keep or not os.path.isfile(path_abs):
+                continue
+
+            os.remove(path_abs)
+            removed += 1
+
+    return removed
 
 
 def parse_args():
@@ -91,8 +108,8 @@ def choose_columns(df, args):
     )
     signal_col = args.signal_col or find_column(
         columns,
-        ["mag", "magnitude", "vmag", "gmag", "rmag", "imag", "flux", "brightness"],
-        forbidden_aliases=["error", "err", "sigma", "uncertainty", "limit"],
+        ["mag", "magnitude", "vmag", "gmag", "rmag", "imag", "v/r", "vr", "flux", "brightness", "v", "r", "i"],
+        forbidden_aliases=["error", "err", "sigma", "uncertainty", "limit", "lambda", "wave", "wavelength"],
     )
 
     if time_col is None:
@@ -120,6 +137,25 @@ def choose_columns(df, args):
         err_col = find_column(columns, error_aliases)
 
     return time_col, signal_col, err_col
+
+
+def read_input_table(path):
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension == ".csv":
+        table = pd.read_csv(path, comment="#")
+    elif extension == ".tsv":
+        table = pd.read_csv(path, comment="#", sep="\t")
+    else:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=None, engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    return table
 
 
 def robust_scatter(values):
@@ -159,12 +195,39 @@ def is_magnitude_column(column_name):
     return "mag" in name or "magnitude" in name
 
 
+def display_label_for_signal(column_name):
+    name = str(column_name)
+    normalized = normalize_name(name)
+
+    if "mag" in normalized or "magnitude" in normalized:
+        return "Magnitude"
+
+    if normalized == "vr":
+        return "V/R"
+
+    return name
+
+
+def display_label_from_dataframe(df, signal_col):
+    if "Signal Label" in df.columns:
+        labels = df["Signal Label"].dropna().astype(str).unique()
+        if len(labels) > 0 and labels[0].strip():
+            return labels[0]
+
+    return display_label_for_signal(signal_col)
+
+
+def is_magnitude_label(label):
+    name = normalize_name(label)
+    return "mag" in name or "magnitude" in name
+
+
 args = parse_args()
 
 # ============================================================
 # LOAD DATA
 # ============================================================
-df = pd.read_csv(args.input, comment="#")
+df = read_input_table(args.input)
 
 if df.empty:
     raise ValueError("Input file is empty.")
@@ -173,6 +236,7 @@ if df.empty:
 # CHOOSE COLUMNS
 # ============================================================
 time_col, signal_col, err_col = choose_columns(df, args)
+signal_label = display_label_from_dataframe(df, signal_col)
 
 # ============================================================
 # EXTRACT ARRAYS
@@ -343,6 +407,7 @@ print(f"Input file                : {input_path}")
 print(f"Output directory          : {output_dir}")
 print(f"Time column               : {time_col}")
 print(f"Signal column             : {signal_col}")
+print(f"Signal label              : {signal_label}")
 print(f"Error column              : {err_col if err_col is not None else 'not found'}")
 print(f"MC noise model            : {mc_noise_source}")
 print(f"MC typical noise level    : {mc_noise_level:.10f}")
@@ -436,6 +501,7 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Output directory: {output_dir}\n")
     f.write(f"Time column: {time_col}\n")
     f.write(f"Signal column: {signal_col}\n")
+    f.write(f"Signal label: {signal_label}\n")
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
@@ -494,10 +560,10 @@ plt.figure(figsize=(9, 6))
 plt.scatter(phase, y, s=18, alpha=0.8, label="Data")
 plt.scatter(phase + 1.0, y, s=18, alpha=0.8, label="Repeated phase")
 plt.xlabel("Phase")
-plt.ylabel(signal_col)
+plt.ylabel(signal_label)
 plt.title(f"Phase-folded curve (LS period = {best_period:.6f} d)")
 plt.grid(True, alpha=0.3)
-if is_magnitude_column(signal_col):
+if is_magnitude_label(signal_label):
     plt.gca().invert_yaxis()
 plt.xlim(0, 2)
 plt.legend()
@@ -533,13 +599,31 @@ plt.close()
 # ============================================================
 # FINAL MESSAGE
 # ============================================================
-print("\nSaved files:")
-for file_path in [
+current_outputs = [
     OUTPUT_PLOT,
     OUTPUT_PHASE,
     OUTPUT_PERIOD,
     OUTPUT_TOP_PEAKS,
     OUTPUT_MC_PERIODS,
     OUTPUT_MC_HIST,
-]:
+]
+
+removed_old_outputs = clean_old_outputs(
+    output_dir,
+    current_outputs,
+    [
+        "*_LS_MC*_periodogram.png",
+        "*_LS_MC*_phase_curve.png",
+        "*_LS_MC*_best_period.txt",
+        "*_LS_MC*_top_peaks.csv",
+        "*_LS_MC*_mc_periods.csv",
+        "*_LS_MC*_mc_period_hist.png",
+    ],
+)
+
+if removed_old_outputs > 0:
+    print(f"\nRemoved old LS output files: {removed_old_outputs}")
+
+print("\nSaved files:")
+for file_path in current_outputs:
     print(f"- {os.path.relpath(file_path, PROJECT_DIR)}")

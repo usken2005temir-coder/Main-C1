@@ -68,6 +68,27 @@ def find_column(columns, names, forbidden=None):
     return None
 
 
+def display_label_for_signal(column_name, converted_from_flux=False):
+    if converted_from_flux:
+        return "Magnitude"
+
+    name = str(column_name)
+    normalized = normalize_name(name)
+
+    if "mag" in normalized or "magnitude" in normalized:
+        return "Magnitude"
+
+    if normalized == "vr":
+        return "V/R"
+
+    return name
+
+
+def is_magnitude_label(label):
+    normalized = normalize_name(label)
+    return "mag" in normalized or "magnitude" in normalized
+
+
 def choose_columns(df, args):
     columns = list(df.columns)
 
@@ -79,8 +100,8 @@ def choose_columns(df, args):
 
     signal_col = args.signal_col or find_column(
         columns,
-        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "Flux", "brightness"],
-        forbidden=["error", "err", "sigma", "limit"]
+        ["Mag", "Magnitude", "Vmag", "gmag", "rmag", "imag", "V/R", "VR", "Flux", "brightness", "V", "R", "I"],
+        forbidden=["error", "err", "sigma", "limit", "lambda", "wave", "wavelength"]
     )
 
     if time_col is None:
@@ -112,19 +133,43 @@ def choose_columns(df, args):
 # ============================================================
 # PATH HELPERS
 # ============================================================
+def supported_input_file(path):
+    extension = os.path.splitext(path)[1].lower()
+    return extension in {".csv", ".txt", ".tsv", ".dat"}
+
+
 def find_default_input():
-    candidates = [
-        os.path.join(SCRIPT_DIR, "APTEST", "APTEST.csv"),
-        os.path.join(os.getcwd(), "APTEST", "APTEST.csv"),
+    aptest_dirs = [
+        os.path.join(SCRIPT_DIR, "APTEST"),
+        os.path.join(os.getcwd(), "APTEST"),
     ]
 
-    for path in candidates:
-        if os.path.exists(path):
-            return os.path.abspath(path)
+    for aptest_dir in aptest_dirs:
+        if not os.path.isdir(aptest_dir):
+            continue
+
+        files = [
+            os.path.join(aptest_dir, name)
+            for name in os.listdir(aptest_dir)
+            if os.path.isfile(os.path.join(aptest_dir, name))
+            and supported_input_file(os.path.join(aptest_dir, name))
+        ]
+
+        if len(files) == 1:
+            return os.path.abspath(files[0])
+
+        if len(files) > 1:
+            file_names = [os.path.basename(path) for path in files]
+            raise FileExistsError(
+                "APTEST must contain exactly one input data file when --input is not used. "
+                f"Found {len(files)} files: {file_names}. "
+                "Leave only one file in APTEST or pass --input explicitly."
+            )
 
     raise FileNotFoundError(
-        "Could not find APTEST/APTEST.csv. "
-        "Run this script from the project folder or pass --input path/to/file.csv."
+        "Could not find an input table in APTEST. "
+        "Put exactly one .csv, .txt, .tsv or .dat file into APTEST, "
+        "or pass --input path/to/file."
     )
 
 
@@ -138,6 +183,28 @@ def infer_output_dir(input_path, output_dir):
         return os.path.dirname(input_dir)
 
     return input_dir
+
+
+# ============================================================
+# TABLE READING
+# ============================================================
+def read_input_table(path):
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension == ".csv":
+        table = pd.read_csv(path, comment="#")
+    elif extension == ".tsv":
+        table = pd.read_csv(path, comment="#", sep="\t")
+    else:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=None, engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    return table
 
 # ============================================================
 # LOAD FILE
@@ -153,7 +220,7 @@ if args.window < 3:
 input_file = os.path.abspath(args.input) if args.input is not None else find_default_input()
 output_dir = infer_output_dir(input_file, args.output_dir)
 
-df = pd.read_csv(input_file, comment="#")
+df = read_input_table(input_file)
 
 if df.empty:
     raise ValueError("Input file is empty.")
@@ -182,6 +249,7 @@ if err_col is not None:
     work[err_col] = pd.to_numeric(work[err_col], errors="coerce")
 
 signal_name = normalize_name(signal_col)
+signal_label = display_label_for_signal(signal_col, converted_from_flux=("flux" in signal_name))
 
 if "flux" in signal_name:
     valid_flux = np.isfinite(work[signal_col]) & (work[signal_col] > 0)
@@ -204,6 +272,8 @@ if mag_col != "Mag":
     rename_map[mag_col] = "Mag"
 
 work = work.rename(columns=rename_map)
+work["Signal Label"] = signal_label
+work["Original Signal Column"] = signal_col
 work = work.dropna(subset=["JD", "Mag"]).copy()
 work = work.sort_values("JD").reset_index(drop=True)
 
@@ -269,9 +339,10 @@ plt.scatter(df_clean["JD"], df_clean["Mag"], s=18, label="Clean data")
 plt.scatter(df_out["JD"], df_out["Mag"], s=30, color="red", label="Outliers")
 plt.plot(work["JD"], work["Trend"], linewidth=1.5, label="Rolling median")
 
-plt.gca().invert_yaxis()
+if is_magnitude_label(signal_label):
+    plt.gca().invert_yaxis()
 plt.xlabel("JD")
-plt.ylabel("Magnitude")
+plt.ylabel(signal_label)
 plt.title(f"Sigma clipping on residuals ({args.sigma:g}-sigma)")
 plt.grid(True, alpha=0.3)
 plt.legend()

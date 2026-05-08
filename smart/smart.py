@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 
 import numpy as np
@@ -33,6 +34,22 @@ SHOW_PLOTS = True
 # Each method first performs an independent global search. Then PDM and Fourier
 # refine around their own candidates, not around one fixed example star period.
 LOCAL_WINDOW_FRACTION = 0.01
+
+
+def clean_old_outputs(output_dir, keep_paths, patterns):
+    keep = {os.path.abspath(path) for path in keep_paths}
+    removed = 0
+
+    for pattern in patterns:
+        for path in glob.glob(os.path.join(output_dir, pattern)):
+            path_abs = os.path.abspath(path)
+            if path_abs in keep or not os.path.isfile(path_abs):
+                continue
+
+            os.remove(path_abs)
+            removed += 1
+
+    return removed
 
 
 # ============================================================
@@ -103,8 +120,8 @@ def choose_columns(df, args):
     )
     signal_col = args.signal_col or find_column(
         columns,
-        ["mag", "magnitude", "vmag", "gmag", "rmag", "imag", "flux", "brightness"],
-        forbidden_aliases=["error", "err", "sigma", "uncertainty", "limit"],
+        ["mag", "magnitude", "vmag", "gmag", "rmag", "imag", "v/r", "vr", "flux", "brightness", "v", "r", "i"],
+        forbidden_aliases=["error", "err", "sigma", "uncertainty", "limit", "lambda", "wave", "wavelength"],
     )
 
     if time_col is None:
@@ -130,15 +147,62 @@ def choose_columns(df, args):
     return time_col, signal_col, err_col
 
 
+def display_label_for_signal(column_name):
+    name = str(column_name)
+    normalized = normalize_name(name)
+
+    if "mag" in normalized or "magnitude" in normalized:
+        return "Magnitude"
+
+    if normalized == "vr":
+        return "V/R"
+
+    return name
+
+
+def display_label_from_dataframe(df, signal_col):
+    if "Signal Label" in df.columns:
+        labels = df["Signal Label"].dropna().astype(str).unique()
+        if len(labels) > 0 and labels[0].strip():
+            return labels[0]
+
+    return display_label_for_signal(signal_col)
+
+
+def is_magnitude_label(label):
+    name = normalize_name(label)
+    return "mag" in name or "magnitude" in name
+
+
 # ============================================================
 # DATA LOADING
 # ============================================================
+def read_input_table(path):
+    extension = os.path.splitext(path)[1].lower()
+
+    if extension == ".csv":
+        table = pd.read_csv(path, comment="#")
+    elif extension == ".tsv":
+        table = pd.read_csv(path, comment="#", sep="\t")
+    else:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=None, engine="python")
+
+    if len(table.columns) == 1:
+        table = pd.read_csv(path, comment="#", sep=r"\s+", engine="python")
+
+    return table
+
+
 def load_light_curve(args):
-    df = pd.read_csv(args.input, comment="#")
+    df = read_input_table(args.input)
     if df.empty:
         raise ValueError("Input file is empty.")
 
     time_col, signal_col, err_col = choose_columns(df, args)
+    signal_label = display_label_from_dataframe(df, signal_col)
 
     t = pd.to_numeric(df[time_col], errors="coerce").to_numpy()
     y = pd.to_numeric(df[signal_col], errors="coerce").to_numpy()
@@ -169,7 +233,7 @@ def load_light_curve(args):
     y = y[order]
     dy = dy[order]
 
-    return df, t, y, dy, time_col, signal_col, err_col
+    return df, t, y, dy, time_col, signal_col, signal_label, err_col
 
 
 # ============================================================
@@ -568,7 +632,7 @@ def plot_method_comparison(results, adopted_period, adopted_source, output_path,
     plt.close()
 
 
-def plot_phase_curve(t, y, dy, period, output_path, signal_col, show_plots):
+def plot_phase_curve(t, y, dy, period, output_path, signal_label, show_plots):
     unit_info = choose_period_unit(period)
     phase = (t / period) % 1.0
 
@@ -584,11 +648,11 @@ def plot_phase_curve(t, y, dy, period, output_path, signal_col, show_plots):
     plt.plot(phase_sorted, model_sorted, color="black", linewidth=2, label="Weighted sine fit")
     plt.plot(phase_sorted + 1.0, model_sorted, color="black", linewidth=2)
     plt.xlabel("Phase")
-    plt.ylabel(signal_col)
+    plt.ylabel(signal_label)
     plt.title(f"Smart phase-folded curve, P = {format_period(period, unit_info)}")
     plt.xlim(0, 2)
     plt.grid(True, alpha=0.3)
-    if "mag" in normalize_name(signal_col):
+    if is_magnitude_label(signal_label):
         plt.gca().invert_yaxis()
     plt.legend()
     plt.tight_layout()
@@ -675,6 +739,7 @@ def write_report(output_path, args, columns, results, diagnostics, recommendatio
         f.write(f"Input file: {args.input}\n")
         f.write(f"Time column: {columns['time']}\n")
         f.write(f"Signal column: {columns['signal']}\n")
+        f.write(f"Signal label: {columns['signal_label']}\n")
         f.write(f"Error column: {columns['error'] if columns['error'] is not None else 'none'}\n")
         f.write(f"Search range: {args.min_period} .. {args.max_period} days\n\n")
 
@@ -728,7 +793,7 @@ if args.min_period >= args.max_period:
 
 os.makedirs(args.output_dir, exist_ok=True)
 
-_, t, y, dy, time_col, signal_col, err_col = load_light_curve(args)
+_, t, y, dy, time_col, signal_col, signal_label, err_col = load_light_curve(args)
 
 print("=" * 72)
 print("Running smart variable-star period analysis")
@@ -737,6 +802,7 @@ print(f"Output directory : {args.output_dir}")
 print(f"Points used      : {len(t)}")
 print(f"Time column      : {time_col}")
 print(f"Signal column    : {signal_col}")
+print(f"Signal label     : {signal_label}")
 print(f"Error column     : {err_col if err_col is not None else 'not found'}")
 print("=" * 72)
 
@@ -882,7 +948,7 @@ OUTPUT_PERIODOGRAMS = os.path.join(args.output_dir, "smart_periodograms.png")
 write_report(
     OUTPUT_REPORT,
     args,
-    {"time": time_col, "signal": signal_col, "error": err_col},
+    {"time": time_col, "signal": signal_col, "signal_label": signal_label, "error": err_col},
     results,
     diagnostics,
     recommendation,
@@ -890,9 +956,32 @@ write_report(
     adopted_source,
 )
 plot_method_comparison(results, adopted_period, adopted_source, OUTPUT_COMPARISON, args.show_plots)
-plot_phase_curve(t, y, dy, adopted_period, OUTPUT_PHASE, signal_col, args.show_plots)
+plot_phase_curve(t, y, dy, adopted_period, OUTPUT_PHASE, signal_label, args.show_plots)
 plot_diagnostics(diagnostics, OUTPUT_DIAGNOSTICS, args.show_plots)
 plot_periodogram_panels(results, adopted_period, OUTPUT_PERIODOGRAMS, args.show_plots)
+
+current_outputs = [
+    OUTPUT_REPORT,
+    OUTPUT_COMPARISON,
+    OUTPUT_PHASE,
+    OUTPUT_DIAGNOSTICS,
+    OUTPUT_PERIODOGRAMS,
+]
+
+removed_old_outputs = clean_old_outputs(
+    args.output_dir,
+    current_outputs,
+    [
+        "smart_period_report.txt",
+        "smart_method_comparison.png",
+        "smart_phase_curve.png",
+        "smart_diagnostics.png",
+        "smart_periodograms.png",
+    ],
+)
+
+if removed_old_outputs > 0:
+    print(f"\nRemoved old smart output files: {removed_old_outputs}")
 
 print("\nMethod results:")
 for key in ["Lomb-Scargle", "PDM", "Weighted Fourier"]:
@@ -918,11 +1007,5 @@ if np.isfinite(relative_spread):
     print(f"- Method spread   : {relative_spread:.6f}")
 
 print("\nSaved files:")
-for file_path in [
-    OUTPUT_REPORT,
-    OUTPUT_COMPARISON,
-    OUTPUT_PHASE,
-    OUTPUT_DIAGNOSTICS,
-    OUTPUT_PERIODOGRAMS,
-]:
+for file_path in current_outputs:
     print(f"- {os.path.relpath(file_path, SCRIPT_DIR)}")
