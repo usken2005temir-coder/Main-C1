@@ -3,34 +3,34 @@ Input file: C:\Users\Temirlan\source\rep\clean_data.csv
 Output directory: C:\Users\Temirlan\source\rep\LS
 Time column: JD
 Signal column: Mag
-Signal label: RV
+Signal label: V/R
 Error column: none
-Number of points: 34
-Time span (days): 1413.1141999997
+Number of points: 61
+Time span (days): 1442.0054919897
 Min period searched (days): 0.05
 Max period searched (days): 300.0
 Samples per peak: 20
 
-Best period (days): 178.6404800915
-Best frequency (1/day): 0.0055978354
-Best power: 0.6526838231
+Best period (days): 0.9890252952
+Best frequency (1/day): 1.0110964855
+Best power: 0.7524569180
 
 === MONTE CARLO SETTINGS ===
 Monte Carlo iterations: 1000
 Random seed: 42
-MC local window half-width (1/day): 0.0035382845
-MC frequency range (1/day): 0.0033333333 .. 0.0091361198
+MC local window half-width (1/day): 0.0034673932
+MC frequency range (1/day): 1.0076290923 .. 1.0145638786
 MC frequency grid size: 5001
 MC peak refinement: parabolic interpolation around the grid maximum
 MC noise model: estimated from residual scatter around the best LS model
-MC typical noise level: 7.9601458119
+MC typical noise level: 0.0770340009
 
 === MONTE CARLO RESULTS ===
-Mean period (days): 174.4805899315
-Median period (days): 178.6968048409
-Std period (days): 15.7492633296
-16th percentile (days): 176.3727948695
-84th percentile (days): 180.4869127033
+Mean period (days): 0.9894711095
+Median period (days): 0.9890574351
+Std period (days): 0.0010281566
+16th percentile (days): 0.9890119071
+84th percentile (days): 0.9907265933
 
-Final adopted result (symmetric): 178.6404800915 +/- 15.7492633296 days
-MC percentile result: 178.6968048409 (+1.7901078624 / -2.3240099714) days
+Final adopted result (symmetric): 0.9890252952 +/- 0.0010281566 days
+MC percentile result: 0.9890574351 (+0.0016691582 / -0.0000455280) days

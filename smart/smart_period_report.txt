@@ -2,33 +2,33 @@
 Input file: C:\Users\Temirlan\source\rep\clean_data.csv
 Time column: JD
 Signal column: Mag
-Signal label: RV
+Signal label: V/R
 Error column: none
-Search range: 0.05 .. 300.0 days
+Search range: 5.978164920117706 .. 300.0 days
 
 === METHOD RESULTS ===
-Lomb-Scargle: period = 178.9389225963 days (178.93892260 d), power = 0.6526838231
-PDM: period = 179.2729295415 days (179.27292954 d), theta = 0.1572824246
-Weighted Fourier: period = 178.9362535377 days (178.93625354 d), power = 0.6530705150
+Lomb-Scargle: period = 98.8381496270 days (98.83814963 d), power = 0.7073434953
+PDM: period = 99.2019212905 days (99.20192129 d), theta = 0.1281342512
+Weighted Fourier: period = 98.8353592497 days (98.83535925 d), power = 0.7079665043
 
 === DATA DIAGNOSTICS ===
-Median time step: 5.9990999997 days
-Maximum time gap: 323.0551000000 days
-Gap ratio: 53.8506
-Phase coverage: 0.5500
-Sine power: 0.6531
-Second harmonic gain: 0.0145
-Second harmonic gain fraction: 0.0222
+Median time step: 2.9890824601 days
+Maximum time gap: 401.8845615499 days
+Gap ratio: 134.4508
+Phase coverage: 0.9000
+Sine power: 0.7080
+Second harmonic gain: 0.0210
+Second harmonic gain fraction: 0.0297
 
 Noise model: estimated from residual scatter around the reference-period sine model
-Typical noise level: 8.0942629912
+Typical noise level: 0.0650773373
 
 === SMART RECOMMENDATION ===
 Recommended main method: Lomb-Scargle
 Reason: The time sampling has large gaps or incomplete phase coverage, so Lomb-Scargle is the best main method for uneven observations.
 Adopted period source: Lomb-Scargle
-Adopted period: 178.9389225963 days
-Adopted period in automatic units: 178.93892260 d
+Adopted period: 98.8381496270 days
+Adopted period in automatic units: 98.83814963 d
 Automatic period unit for plots: days
 
 === METHOD LOGIC ===

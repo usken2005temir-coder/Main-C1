@@ -22,8 +22,10 @@ PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 INPUT_FILE = os.path.join(PROJECT_DIR, "clean_data.csv")
 OUTPUT_DIR = SCRIPT_DIR
 
-MIN_PERIOD = 0.05
+MIN_PERIOD = None
+MIN_PERIOD_FLOOR = 0.05
 MAX_PERIOD = 300.0
+AUTO_MIN_PERIOD_CADENCE_FACTOR = 2.0
 
 N_GRID = 5000
 N_PDM_GRID = 1501
@@ -72,7 +74,15 @@ def parse_args():
     parser.add_argument("--signal-col", default=None)
     parser.add_argument("--error-col", default=None)
 
-    parser.add_argument("--min-period", type=float, default=MIN_PERIOD)
+    parser.add_argument(
+        "--min-period",
+        type=float,
+        default=MIN_PERIOD,
+        help=(
+            "Minimum period in days. Default: automatic from the data cadence, "
+            "max(0.05 d, 2 * median time step)."
+        ),
+    )
     parser.add_argument("--max-period", type=float, default=MAX_PERIOD)
     parser.add_argument("--n-grid", type=int, default=N_GRID)
     parser.add_argument("--n-pdm-grid", type=int, default=N_PDM_GRID)
@@ -486,6 +496,24 @@ def is_period_near_search_edge(period, min_period, max_period, edge_fraction=EDG
     return period <= lower_edge or period >= upper_edge
 
 
+def resolve_period_limits(t, requested_min_period, requested_max_period):
+    t_sorted = np.sort(t[np.isfinite(t)])
+    dt = np.diff(t_sorted)
+    dt = dt[np.isfinite(dt) & (dt > 0)]
+
+    if requested_min_period is None:
+        if len(dt) > 0:
+            min_period = max(MIN_PERIOD_FLOOR, AUTO_MIN_PERIOD_CADENCE_FACTOR * np.median(dt))
+        else:
+            min_period = MIN_PERIOD_FLOOR
+    else:
+        min_period = requested_min_period
+
+    max_period = requested_max_period
+
+    return float(min_period), float(max_period)
+
+
 def phase_coverage(t, period, n_bins):
     phase = (t / period) % 1.0
     counts, _ = np.histogram(phase, bins=n_bins, range=(0.0, 1.0))
@@ -813,14 +841,16 @@ def write_report(output_path, args, columns, results, diagnostics, recommendatio
 # ============================================================
 args = parse_args()
 
+os.makedirs(args.output_dir, exist_ok=True)
+
+_, t, y, dy, time_col, signal_col, signal_label, err_col = load_light_curve(args)
+
+args.min_period, args.max_period = resolve_period_limits(t, args.min_period, args.max_period)
+
 if args.min_period <= 0 or args.max_period <= 0:
     raise ValueError("Minimum and maximum period must be positive.")
 if args.min_period >= args.max_period:
     raise ValueError("Minimum period must be smaller than maximum period.")
-
-os.makedirs(args.output_dir, exist_ok=True)
-
-_, t, y, dy, time_col, signal_col, signal_label, err_col = load_light_curve(args)
 
 print("=" * 72)
 print("Running smart variable-star period analysis")
@@ -831,6 +861,7 @@ print(f"Time column      : {time_col}")
 print(f"Signal column    : {signal_col}")
 print(f"Signal label     : {signal_label}")
 print(f"Error column     : {err_col if err_col is not None else 'not found'}")
+print(f"Search range     : {args.min_period:.10f} .. {args.max_period:.10f} days")
 print("=" * 72)
 
 ls_result = run_lomb_scargle(t, y, dy, args.min_period, args.max_period, args.ls_samples_per_peak)
