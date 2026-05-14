@@ -24,11 +24,13 @@ OUTPUT_DIR = SCRIPT_DIR
 
 MIN_PERIOD = None
 MIN_PERIOD_FLOOR = 0.05
-MAX_PERIOD = 300.0
+MAX_PERIOD = None
 AUTO_MIN_PERIOD_CADENCE_FACTOR = 2.0
+OVERSAMPLE_FACTOR = 10
+PERIOD_STEP_METHOD = "exponential"
 
-N_GRID = 5000
-N_PDM_GRID = 1501
+N_GRID = None
+N_PDM_GRID = None
 N_PHASE_BINS = 20
 LS_SAMPLES_PER_PEAK = 20
 SHOW_PLOTS = True
@@ -84,11 +86,28 @@ def parse_args():
         ),
     )
     parser.add_argument("--max-period", type=float, default=MAX_PERIOD)
-    parser.add_argument("--n-grid", type=int, default=N_GRID)
-    parser.add_argument("--n-pdm-grid", type=int, default=N_PDM_GRID)
+    parser.add_argument(
+        "--n-grid",
+        type=int,
+        default=N_GRID,
+        help="Number of LS/Fourier periods to scan. Default: N points * oversample factor.",
+    )
+    parser.add_argument(
+        "--n-pdm-grid",
+        type=int,
+        default=N_PDM_GRID,
+        help="Number of PDM periods to scan. Default: N points * oversample factor.",
+    )
     parser.add_argument("--n-phase-bins", type=int, default=N_PHASE_BINS)
     parser.add_argument("--ls-samples-per-peak", type=int, default=LS_SAMPLES_PER_PEAK)
     parser.add_argument("--local-window-fraction", type=float, default=LOCAL_WINDOW_FRACTION)
+    parser.add_argument("--oversample-factor", type=int, default=OVERSAMPLE_FACTOR)
+    parser.add_argument(
+        "--period-step",
+        choices=["exponential", "linear"],
+        default=PERIOD_STEP_METHOD,
+        help="Global period grid spacing. Default: exponential.",
+    )
 
     parser.add_argument("--show-plots", action="store_true", default=SHOW_PLOTS)
     parser.add_argument("--no-show-plots", action="store_false", dest="show_plots")
@@ -355,20 +374,23 @@ def refine_peak_parabolic(x_grid, y_grid, peak_idx, mode="max"):
 # ============================================================
 # METHOD: LOMB-SCARGLE
 # ============================================================
-def run_lomb_scargle(t, y, dy, min_period, max_period, samples_per_peak):
+def make_period_grid(min_period, max_period, n_periods, step_method="linear"):
+    if step_method == "exponential":
+        return np.geomspace(min_period, max_period, n_periods)
+
+    return np.linspace(min_period, max_period, n_periods)
+
+
+def run_lomb_scargle(t, y, dy, min_period, max_period, n_periods, step_method):
     if LombScargle is None:
         return None
 
-    min_frequency = 1.0 / max_period
-    max_frequency = 1.0 / min_period
+    periods = make_period_grid(min_period, max_period, n_periods, step_method)
+    frequency = 1.0 / periods
 
     y_centered = y - weighted_mean(y, dy)
     ls = LombScargle(t, y_centered, dy=dy)
-    frequency, power = ls.autopower(
-        minimum_frequency=min_frequency,
-        maximum_frequency=max_frequency,
-        samples_per_peak=samples_per_peak,
-    )
+    power = ls.power(frequency)
 
     best_idx = int(np.argmax(power))
     best_frequency = refine_peak_parabolic(frequency, power, best_idx, mode="max")
@@ -389,7 +411,7 @@ def run_lomb_scargle(t, y, dy, min_period, max_period, samples_per_peak):
 # ============================================================
 # METHOD: WEIGHTED FOURIER
 # ============================================================
-def run_fourier_local(t, y, dy, reference_period, min_period, max_period, n_grid, local_window_fraction):
+def run_fourier_local(t, y, dy, reference_period, min_period, max_period, n_grid, local_window_fraction, step_method="linear"):
     if reference_period is None or not np.isfinite(reference_period):
         period_min = min_period
         period_max = max_period
@@ -398,8 +420,8 @@ def run_fourier_local(t, y, dy, reference_period, min_period, max_period, n_grid
         period_min = max(min_period, reference_period - half_width)
         period_max = min(max_period, reference_period + half_width)
 
-    frequency = np.linspace(1.0 / period_max, 1.0 / period_min, n_grid)
-    periods = 1.0 / frequency
+    periods = make_period_grid(period_min, period_max, n_grid, step_method)
+    frequency = 1.0 / periods
 
     y0 = weighted_mean(y, dy)
     chi2_const = np.sum(((y - y0) / dy) ** 2)
@@ -453,10 +475,9 @@ def pdm_theta(t, y, period, n_bins):
     return numerator / ((len(y) - 1) * total_var)
 
 
-def run_pdm_local(t, y, reference_period, min_period, max_period, n_grid, n_bins, local_window_fraction):
+def run_pdm_local(t, y, reference_period, min_period, max_period, n_grid, n_bins, local_window_fraction, step_method="linear"):
     if reference_period is None or not np.isfinite(reference_period):
-        frequency = np.linspace(1.0 / max_period, 1.0 / min_period, n_grid)
-        periods = 1.0 / frequency
+        periods = make_period_grid(min_period, max_period, n_grid, step_method)
     else:
         half_width = max(reference_period * local_window_fraction, min_period * 0.02)
         period_min = max(min_period, reference_period - half_width)
@@ -496,8 +517,9 @@ def is_period_near_search_edge(period, min_period, max_period, edge_fraction=EDG
     return period <= lower_edge or period >= upper_edge
 
 
-def resolve_period_limits(t, requested_min_period, requested_max_period):
+def resolve_period_search(t, requested_min_period, requested_max_period, requested_n_grid, requested_n_pdm_grid, oversample_factor):
     t_sorted = np.sort(t[np.isfinite(t)])
+    time_span = t_sorted[-1] - t_sorted[0]
     dt = np.diff(t_sorted)
     dt = dt[np.isfinite(dt) & (dt > 0)]
 
@@ -509,9 +531,13 @@ def resolve_period_limits(t, requested_min_period, requested_max_period):
     else:
         min_period = requested_min_period
 
-    max_period = requested_max_period
+    max_period = time_span if requested_max_period is None else requested_max_period
+    median_dt = float(np.median(dt)) if len(dt) > 0 else np.nan
+    n_periods = max(10, int(len(t_sorted) * oversample_factor))
+    n_grid = n_periods if requested_n_grid is None else requested_n_grid
+    n_pdm_grid = n_periods if requested_n_pdm_grid is None else requested_n_pdm_grid
 
-    return float(min_period), float(max_period)
+    return float(min_period), float(max_period), int(n_grid), int(n_pdm_grid), median_dt
 
 
 def phase_coverage(t, period, n_bins):
@@ -795,7 +821,11 @@ def write_report(output_path, args, columns, results, diagnostics, recommendatio
         f.write(f"Signal column: {columns['signal']}\n")
         f.write(f"Signal label: {columns['signal_label']}\n")
         f.write(f"Error column: {columns['error'] if columns['error'] is not None else 'none'}\n")
-        f.write(f"Search range: {args.min_period} .. {args.max_period} days\n\n")
+        f.write(f"Search range: {args.min_period} .. {args.max_period} days\n")
+        f.write(f"Periods scanned: {args.n_grid}\n")
+        f.write(f"Oversample factor: {args.oversample_factor}\n")
+        f.write(f"Period step method: {args.period_step}\n")
+        f.write("Automatic period defaults follow NASA Exoplanet Archive style settings.\n\n")
 
         f.write("=== METHOD RESULTS ===\n")
         for key in ["Lomb-Scargle", "PDM", "Weighted Fourier"]:
@@ -845,7 +875,20 @@ os.makedirs(args.output_dir, exist_ok=True)
 
 _, t, y, dy, time_col, signal_col, signal_label, err_col = load_light_curve(args)
 
-args.min_period, args.max_period = resolve_period_limits(t, args.min_period, args.max_period)
+(
+    args.min_period,
+    args.max_period,
+    args.n_grid,
+    args.n_pdm_grid,
+    median_time_step,
+) = resolve_period_search(
+    t,
+    args.min_period,
+    args.max_period,
+    args.n_grid,
+    args.n_pdm_grid,
+    args.oversample_factor,
+)
 
 if args.min_period <= 0 or args.max_period <= 0:
     raise ValueError("Minimum and maximum period must be positive.")
@@ -862,9 +905,12 @@ print(f"Signal column    : {signal_col}")
 print(f"Signal label     : {signal_label}")
 print(f"Error column     : {err_col if err_col is not None else 'not found'}")
 print(f"Search range     : {args.min_period:.10f} .. {args.max_period:.10f} days")
+print(f"Median time step : {median_time_step:.10f} days")
+print(f"Periods scanned  : {args.n_grid}")
+print(f"Period step      : {args.period_step}")
 print("=" * 72)
 
-ls_result = run_lomb_scargle(t, y, dy, args.min_period, args.max_period, args.ls_samples_per_peak)
+ls_result = run_lomb_scargle(t, y, dy, args.min_period, args.max_period, args.n_grid, args.period_step)
 reference_period = ls_result["period"] if ls_result is not None else None
 
 pdm_global_result = run_pdm_local(
@@ -876,6 +922,7 @@ pdm_global_result = run_pdm_local(
     args.n_pdm_grid,
     args.n_phase_bins,
     args.local_window_fraction,
+    args.period_step,
 )
 pdm_result = (
     run_pdm_local(
@@ -901,6 +948,7 @@ fourier_global_result = run_fourier_local(
     args.max_period,
     args.n_grid,
     args.local_window_fraction,
+    args.period_step,
 )
 fourier_result = (
     run_fourier_local(

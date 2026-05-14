@@ -1,0 +1,46 @@
+=== FOURIER RESULTS ===
+Method: weighted sinusoidal Fourier fit at each trial frequency
+Input file: C:\Users\Temirlan\source\repos\Main-C1\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main-C1\fourier
+Search mode: local around LS period
+LS period source: C:\Users\Temirlan\source\repos\Main-C1\LS\clean_data_LS_MC1000_5.978-1442.0d_best_period.txt
+LS period (days): 132.5228663878
+Time column: JD
+Signal column: Mag
+Signal label: V/R
+Error column: none
+Number of points: 61
+Time span (days): 1442.0054919897
+Median time step (days): 2.9890824601
+Frequency resolution approx (1/day): 0.0006934786
+Min period searched (days): 125.8967230684
+Max period searched (days): 139.1490097072
+Fourier frequencies: 10001
+
+Oversample factor: 10
+Global period step method: exponential
+Automatic period defaults follow NASA Exoplanet Archive style settings.
+
+Best Fourier period (days): 132.8974305907
+Best Fourier frequency (1/day): 0.0075246000
+Best Fourier power: 0.7026445499
+Best semi-amplitude: 0.1833549440
+Difference from LS period (days): 0.3745642029
+
+=== MONTE CARLO SETTINGS ===
+Monte Carlo iterations: 1000
+Random seed: 42
+MC period range (days): 130.2394819789 .. 135.5553792026
+MC frequency grid size: 501
+MC noise model: estimated from residual scatter around the best Fourier sine model
+MC typical noise level: 0.0755334900
+
+=== MONTE CARLO RESULTS ===
+Mean period (days): 132.9275385546
+Median period (days): 132.8914859805
+Std period (days): 0.6823630785
+16th percentile (days): 132.2732041489
+84th percentile (days): 133.5928598711
+
+Final adopted result (symmetric): 132.8974305907 +/- 0.6823630785 days
+MC percentile result: 132.8914859805 (+0.7013738906 / -0.6182818316) days

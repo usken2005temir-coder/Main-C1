@@ -12,6 +12,11 @@ from astropy.timeseries import LombScargle
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 
+MIN_PERIOD = None
+MAX_PERIOD = None
+OVERSAMPLE_FACTOR = 10
+PERIOD_STEP_METHOD = "exponential"
+
 
 def clean_old_outputs(output_dir, keep_paths, patterns):
     keep = {os.path.abspath(path) for path in keep_paths}
@@ -49,9 +54,32 @@ def parse_args():
     parser.add_argument("--signal-col", default=None, help="Signal column name, e.g. Mag, Vmag, Flux.")
     parser.add_argument("--error-col", default=None, help="Optional signal error column name.")
 
-    parser.add_argument("--min-period", type=float, default=0.05, help="Minimum period in days.")
-    parser.add_argument("--max-period", type=float, default=300.0, help="Maximum period in days.")
+    parser.add_argument(
+        "--min-period",
+        type=float,
+        default=MIN_PERIOD,
+        help="Minimum period in days. Default: 2 * median time step.",
+    )
+    parser.add_argument(
+        "--max-period",
+        type=float,
+        default=MAX_PERIOD,
+        help="Maximum period in days. Default: full time span.",
+    )
+    parser.add_argument(
+        "--n-periods",
+        type=int,
+        default=None,
+        help="Number of periods to scan. Default: N points * oversample factor.",
+    )
     parser.add_argument("--samples-per-peak", type=int, default=20)
+    parser.add_argument("--oversample-factor", type=int, default=OVERSAMPLE_FACTOR)
+    parser.add_argument(
+        "--period-step",
+        choices=["exponential", "linear"],
+        default=PERIOD_STEP_METHOD,
+        help="Period grid spacing. Default: exponential, like NASA Exoplanet Archive.",
+    )
     parser.add_argument("--n-best-peaks", type=int, default=5)
     parser.add_argument("--peak-separation-widths", type=float, default=5.0)
 
@@ -78,6 +106,36 @@ def parse_args():
 
 def normalize_name(name):
     return "".join(ch.lower() for ch in str(name) if ch.isalnum())
+
+
+def resolve_period_search(t, min_period, max_period, n_periods, oversample_factor):
+    t_sorted = np.sort(t[np.isfinite(t)])
+    time_span = t_sorted[-1] - t_sorted[0]
+    dt = np.diff(t_sorted)
+    dt = dt[np.isfinite(dt) & (dt > 0)]
+
+    if len(dt) == 0:
+        raise ValueError("Cannot determine period limits: no positive time steps found.")
+
+    median_dt = float(np.median(dt))
+
+    if min_period is None:
+        min_period = 2.0 * median_dt
+
+    if max_period is None:
+        max_period = time_span
+
+    if n_periods is None:
+        n_periods = max(10, int(len(t_sorted) * oversample_factor))
+
+    return float(min_period), float(max_period), int(n_periods), median_dt
+
+
+def make_period_grid(min_period, max_period, n_periods, step_method):
+    if step_method == "linear":
+        return np.linspace(min_period, max_period, n_periods)
+
+    return np.geomspace(min_period, max_period, n_periods)
 
 
 def find_column(columns, aliases, forbidden_aliases=None):
@@ -277,6 +335,14 @@ if time_span <= 0:
 
 y_centered = y - np.mean(y)
 
+args.min_period, args.max_period, args.n_periods, median_time_step = resolve_period_search(
+    t,
+    args.min_period,
+    args.max_period,
+    args.n_periods,
+    args.oversample_factor,
+)
+
 # ============================================================
 # PERIOD / FREQUENCY RANGE
 # ============================================================
@@ -294,6 +360,8 @@ if args.max_period > time_span:
 
 min_frequency = 1.0 / args.max_period
 max_frequency = 1.0 / args.min_period
+period_grid = make_period_grid(args.min_period, args.max_period, args.n_periods, args.period_step)
+frequency_grid = 1.0 / period_grid
 
 # Natural frequency resolution ~ 1 / T
 freq_resolution = 1.0 / time_span
@@ -323,11 +391,8 @@ if dy is not None:
 else:
     ls = LombScargle(t, y_centered)
 
-frequency, power = ls.autopower(
-    minimum_frequency=min_frequency,
-    maximum_frequency=max_frequency,
-    samples_per_peak=args.samples_per_peak,
-)
+frequency = frequency_grid
+power = ls.power(frequency)
 
 period = 1.0 / frequency
 
@@ -415,8 +480,11 @@ print(f"Points used               : {len(t)}")
 print(f"Main LS best period       : {best_period:.10f} days")
 print(f"Main LS best frequency    : {best_frequency:.10f} 1/day")
 print(f"Time span                 : {time_span:.10f} days")
+print(f"Median time step          : {median_time_step:.10f} days")
 print(f"Frequency resolution ~    : {freq_resolution:.10f} 1/day")
 print(f"Period range searched     : {args.min_period:.10f} .. {args.max_period:.10f} days")
+print(f"Periods scanned           : {args.n_periods}")
+print(f"Period step method        : {args.period_step}")
 print(f"MC local frequency range  : {mc_min_frequency:.10f} .. {mc_max_frequency:.10f} 1/day")
 print(f"MC frequency grid size    : {args.mc_grid_size}")
 print(f"Monte Carlo iterations    : {args.n_monte_carlo}")
@@ -505,9 +573,13 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
+    f.write(f"Median time step (days): {median_time_step:.10f}\n")
     f.write(f"Min period searched (days): {args.min_period}\n")
     f.write(f"Max period searched (days): {args.max_period}\n")
-    f.write(f"Samples per peak: {args.samples_per_peak}\n\n")
+    f.write(f"Periods scanned: {args.n_periods}\n")
+    f.write(f"Oversample factor: {args.oversample_factor}\n")
+    f.write(f"Period step method: {args.period_step}\n")
+    f.write("Automatic period defaults follow NASA Exoplanet Archive style settings.\n\n")
 
     f.write(f"Best period (days): {best_period:.10f}\n")
     f.write(f"Best frequency (1/day): {best_frequency:.10f}\n")

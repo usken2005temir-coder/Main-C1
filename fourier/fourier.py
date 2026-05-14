@@ -18,10 +18,12 @@ LS_DIR = os.path.join(PROJECT_DIR, "LS")
 INPUT_FILE = os.path.join(PROJECT_DIR, "clean_data.csv")
 OUTPUT_DIR = SCRIPT_DIR
 
-MIN_PERIOD = 0.05
-MAX_PERIOD = 300.0
+MIN_PERIOD = None
+MAX_PERIOD = None
+OVERSAMPLE_FACTOR = 10
+PERIOD_STEP_METHOD = "exponential"
 
-N_FREQUENCIES_GLOBAL = 20000
+N_FREQUENCIES_GLOBAL = None
 N_FREQUENCIES_LOCAL = 10001
 FOURIER_CHUNK_SIZE = 512
 
@@ -68,11 +70,33 @@ def parse_args():
     parser.add_argument("--signal-col", default=None)
     parser.add_argument("--error-col", default=None)
 
-    parser.add_argument("--min-period", type=float, default=MIN_PERIOD)
-    parser.add_argument("--max-period", type=float, default=MAX_PERIOD)
-    parser.add_argument("--n-frequencies-global", type=int, default=N_FREQUENCIES_GLOBAL)
+    parser.add_argument(
+        "--min-period",
+        type=float,
+        default=MIN_PERIOD,
+        help="Minimum period in days. Default: 2 * median time step.",
+    )
+    parser.add_argument(
+        "--max-period",
+        type=float,
+        default=MAX_PERIOD,
+        help="Maximum period in days. Default: full time span.",
+    )
+    parser.add_argument(
+        "--n-frequencies-global",
+        type=int,
+        default=N_FREQUENCIES_GLOBAL,
+        help="Number of global periods/frequencies to scan. Default: N points * oversample factor.",
+    )
     parser.add_argument("--n-frequencies-local", type=int, default=N_FREQUENCIES_LOCAL)
     parser.add_argument("--chunk-size", type=int, default=FOURIER_CHUNK_SIZE)
+    parser.add_argument("--oversample-factor", type=int, default=OVERSAMPLE_FACTOR)
+    parser.add_argument(
+        "--period-step",
+        choices=["exponential", "linear"],
+        default=PERIOD_STEP_METHOD,
+        help="Global period grid spacing. Default: exponential.",
+    )
 
     parser.add_argument("--n-best-peaks", type=int, default=N_BEST_PEAKS)
     parser.add_argument("--peak-separation-widths", type=float, default=MIN_PEAK_SEPARATION_IN_WIDTHS)
@@ -283,9 +307,36 @@ def local_period_bounds(center_period, window_fraction, min_period, max_period):
     return local_min, local_max
 
 
-def make_frequency_grid(min_period, max_period, n_frequencies):
+def resolve_period_search(t, min_period, max_period, n_periods, oversample_factor):
+    t_sorted = np.sort(t[np.isfinite(t)])
+    time_span = t_sorted[-1] - t_sorted[0]
+    dt = np.diff(t_sorted)
+    dt = dt[np.isfinite(dt) & (dt > 0)]
+
+    if len(dt) == 0:
+        raise ValueError("Cannot determine period limits: no positive time steps found.")
+
+    median_dt = float(np.median(dt))
+
+    if min_period is None:
+        min_period = 2.0 * median_dt
+
+    if max_period is None:
+        max_period = time_span
+
+    if n_periods is None:
+        n_periods = max(10, int(len(t_sorted) * oversample_factor))
+
+    return float(min_period), float(max_period), int(n_periods), median_dt
+
+
+def make_frequency_grid(min_period, max_period, n_frequencies, step_method="linear"):
     if n_frequencies < 5:
         raise ValueError("Frequency grid must contain at least 5 frequencies.")
+
+    if step_method == "exponential":
+        period_grid = np.geomspace(min_period, max_period, n_frequencies)
+        return 1.0 / period_grid
 
     min_frequency = 1.0 / max_period
     max_frequency = 1.0 / min_period
@@ -624,6 +675,14 @@ time_span = t.max() - t.min()
 if time_span <= 0:
     raise ValueError("Time span must be positive.")
 
+args.min_period, args.max_period, args.n_frequencies_global, median_time_step = resolve_period_search(
+    t,
+    args.min_period,
+    args.max_period,
+    args.n_frequencies_global,
+    args.oversample_factor,
+)
+
 if args.min_period <= 0 or args.max_period <= 0:
     raise ValueError("MIN_PERIOD and MAX_PERIOD must be positive.")
 
@@ -672,7 +731,8 @@ else:
     period_max = args.max_period
     n_frequencies = args.n_frequencies_global
 
-frequency = make_frequency_grid(period_min, period_max, n_frequencies)
+step_method = args.period_step if "global Fourier search" in search_mode else "linear"
+frequency = make_frequency_grid(period_min, period_max, n_frequencies, step_method)
 period = 1.0 / frequency
 
 # ============================================================
@@ -706,6 +766,8 @@ print(f"Fourier frequencies       : {len(frequency)}")
 print(f"Frequency resolution ~    : {freq_resolution:.10f} 1/day")
 print(f"Points used               : {len(t)}")
 print(f"Time span                 : {time_span:.10f} days")
+print(f"Median time step          : {median_time_step:.10f} days")
+print(f"Global period step        : {args.period_step}")
 print("=" * 70)
 
 power, amplitude = fourier_power_grid(
@@ -885,10 +947,14 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
+    f.write(f"Median time step (days): {median_time_step:.10f}\n")
     f.write(f"Frequency resolution approx (1/day): {freq_resolution:.10f}\n")
     f.write(f"Min period searched (days): {period_min:.10f}\n")
     f.write(f"Max period searched (days): {period_max:.10f}\n")
     f.write(f"Fourier frequencies: {len(frequency)}\n\n")
+    f.write(f"Oversample factor: {args.oversample_factor}\n")
+    f.write(f"Global period step method: {args.period_step}\n")
+    f.write("Automatic period defaults follow NASA Exoplanet Archive style settings.\n\n")
 
     f.write(f"Best Fourier period (days): {best_period:.10f}\n")
     f.write(f"Best Fourier frequency (1/day): {best_frequency:.10f}\n")

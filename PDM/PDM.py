@@ -18,9 +18,11 @@ LS_DIR = os.path.join(PROJECT_DIR, "LS")
 INPUT_FILE = os.path.join(PROJECT_DIR, "clean_data.csv")
 OUTPUT_DIR = SCRIPT_DIR
 
-MIN_PERIOD = 0.05
-MAX_PERIOD = 300.0
-N_PERIODS_GLOBAL = 10000
+MIN_PERIOD = None
+MAX_PERIOD = None
+OVERSAMPLE_FACTOR = 10
+PERIOD_STEP_METHOD = "exponential"
+N_PERIODS_GLOBAL = None
 N_PERIODS_LOCAL = 5001
 
 N_BINS = 10
@@ -67,10 +69,32 @@ def parse_args():
     parser.add_argument("--signal-col", default=None)
     parser.add_argument("--error-col", default=None)
 
-    parser.add_argument("--min-period", type=float, default=MIN_PERIOD)
-    parser.add_argument("--max-period", type=float, default=MAX_PERIOD)
-    parser.add_argument("--n-periods-global", type=int, default=N_PERIODS_GLOBAL)
+    parser.add_argument(
+        "--min-period",
+        type=float,
+        default=MIN_PERIOD,
+        help="Minimum period in days. Default: 2 * median time step.",
+    )
+    parser.add_argument(
+        "--max-period",
+        type=float,
+        default=MAX_PERIOD,
+        help="Maximum period in days. Default: full time span.",
+    )
+    parser.add_argument(
+        "--n-periods-global",
+        type=int,
+        default=N_PERIODS_GLOBAL,
+        help="Number of global periods to scan. Default: N points * oversample factor.",
+    )
     parser.add_argument("--n-periods-local", type=int, default=N_PERIODS_LOCAL)
+    parser.add_argument("--oversample-factor", type=int, default=OVERSAMPLE_FACTOR)
+    parser.add_argument(
+        "--period-step",
+        choices=["exponential", "linear"],
+        default=PERIOD_STEP_METHOD,
+        help="Global period grid spacing. Default: exponential.",
+    )
 
     parser.add_argument("--n-bins", type=int, default=N_BINS)
     parser.add_argument("--min-points-per-bin", type=int, default=MIN_POINTS_PER_BIN)
@@ -286,7 +310,33 @@ def read_ls_period(args):
     return None, report_path
 
 
-def make_period_grid(min_period, max_period, n_periods):
+def resolve_period_search(t, min_period, max_period, n_periods, oversample_factor):
+    t_sorted = np.sort(t[np.isfinite(t)])
+    time_span = t_sorted[-1] - t_sorted[0]
+    dt = np.diff(t_sorted)
+    dt = dt[np.isfinite(dt) & (dt > 0)]
+
+    if len(dt) == 0:
+        raise ValueError("Cannot determine period limits: no positive time steps found.")
+
+    median_dt = float(np.median(dt))
+
+    if min_period is None:
+        min_period = 2.0 * median_dt
+
+    if max_period is None:
+        max_period = time_span
+
+    if n_periods is None:
+        n_periods = max(10, int(len(t_sorted) * oversample_factor))
+
+    return float(min_period), float(max_period), int(n_periods), median_dt
+
+
+def make_period_grid(min_period, max_period, n_periods, step_method="linear"):
+    if step_method == "exponential":
+        return np.geomspace(min_period, max_period, n_periods)
+
     return np.linspace(min_period, max_period, n_periods)
 
 
@@ -436,6 +486,14 @@ time_span = t.max() - t.min()
 if time_span <= 0:
     raise ValueError("Time span must be positive.")
 
+args.min_period, args.max_period, args.n_periods_global, median_time_step = resolve_period_search(
+    t,
+    args.min_period,
+    args.max_period,
+    args.n_periods_global,
+    args.oversample_factor,
+)
+
 if args.min_period <= 0 or args.max_period <= 0:
     raise ValueError("MIN_PERIOD and MAX_PERIOD must be positive.")
 
@@ -470,7 +528,7 @@ else:
         print("WARNING: LS period was found but lies outside the requested PDM period range.")
     local_min_period = args.min_period
     local_max_period = args.max_period
-    period_grid = make_period_grid(args.min_period, args.max_period, args.n_periods_global)
+    period_grid = make_period_grid(args.min_period, args.max_period, args.n_periods_global, args.period_step)
 
 # ============================================================
 # OUTPUT FILE NAMES
@@ -570,6 +628,9 @@ print(f"MC noise model            : {mc_noise_source}")
 print(f"MC typical noise level    : {mc_noise_level:.10f}")
 print(f"Points used               : {len(t)}")
 print(f"Time span                 : {time_span:.10f} days")
+print(f"Median time step          : {median_time_step:.10f} days")
+print(f"Global periods scanned    : {args.n_periods_global}")
+print(f"Global period step        : {args.period_step}")
 print(f"PDM best period           : {best_period:.10f} days")
 print(f"PDM best theta            : {best_theta:.10f}")
 print(f"Monte Carlo iterations    : {args.n_monte_carlo}")
@@ -652,8 +713,13 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
+    f.write(f"Median time step (days): {median_time_step:.10f}\n")
     f.write(f"Min period searched (days): {args.min_period}\n")
     f.write(f"Max period searched (days): {args.max_period}\n")
+    f.write(f"Global periods scanned: {args.n_periods_global}\n")
+    f.write(f"Oversample factor: {args.oversample_factor}\n")
+    f.write(f"Global period step method: {args.period_step}\n")
+    f.write("Automatic period defaults follow NASA Exoplanet Archive style settings.\n")
     f.write(f"PDM bins: {args.n_bins}\n")
     f.write(f"Minimum points per bin: {args.min_points_per_bin}\n\n")
 

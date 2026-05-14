@@ -1,0 +1,44 @@
+=== PDM RESULTS ===
+Input file: C:\Users\Temirlan\source\repos\Main-C1\clean_data.csv
+Output directory: C:\Users\Temirlan\source\repos\Main-C1\PDM
+Search mode: local around LS period
+LS period source: C:\Users\Temirlan\source\repos\Main-C1\LS\clean_data_LS_MC1000_5.978-1442.0d_best_period.txt
+LS period (days): 132.5228663878
+Time column: JD
+Signal column: Mag
+Signal label: V/R
+Error column: none
+Number of points: 61
+Time span (days): 1442.0054919897
+Median time step (days): 2.9890824601
+Min period searched (days): 5.978164920117706
+Max period searched (days): 1442.0054919896647
+Global periods scanned: 610
+Oversample factor: 10
+Global period step method: exponential
+Automatic period defaults follow NASA Exoplanet Archive style settings.
+PDM bins: 10
+Minimum points per bin: 3
+
+Best PDM period (days): 131.8254207066
+Best PDM frequency (1/day): 0.0075857903
+Best PDM theta: 0.1615673354
+Difference from LS period (days): -0.6974456812
+
+=== MONTE CARLO SETTINGS ===
+Monte Carlo iterations: 1000
+Random seed: 42
+MC period range (days): 129.1889122924 .. 134.4619291207
+MC grid size: 401
+MC noise model: estimated from residual scatter around the best PDM phase-bin model
+MC typical noise level: 0.0548562000
+
+=== MONTE CARLO RESULTS ===
+Mean period (days): 132.4766275364
+Median period (days): 132.4053696682
+Std period (days): 1.0004401346
+16th percentile (days): 131.5889891716
+84th percentile (days): 133.5678891348
+
+Final adopted result (symmetric): 131.8254207066 +/- 1.0004401346 days
+MC percentile result: 132.4053696682 (+1.1625194666 / -0.8163804967) days

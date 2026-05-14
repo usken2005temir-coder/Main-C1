@@ -18,8 +18,8 @@ LS_DIR = os.path.join(PROJECT_DIR, "LS")
 INPUT_FILE = os.path.join(PROJECT_DIR, "clean_data.csv")
 OUTPUT_DIR = SCRIPT_DIR
 
-MIN_PERIOD = 0.05
-MAX_PERIOD = 300.0
+MIN_PERIOD = None
+MAX_PERIOD = None
 N_PERIODS = 240
 N_TIME_CENTERS = 100
 
@@ -73,8 +73,18 @@ def parse_args():
     parser.add_argument("--signal-col", default=None)
     parser.add_argument("--error-col", default=None)
 
-    parser.add_argument("--min-period", type=float, default=MIN_PERIOD)
-    parser.add_argument("--max-period", type=float, default=MAX_PERIOD)
+    parser.add_argument(
+        "--min-period",
+        type=float,
+        default=MIN_PERIOD,
+        help="Minimum period in days. Default: 2 * median time step.",
+    )
+    parser.add_argument(
+        "--max-period",
+        type=float,
+        default=MAX_PERIOD,
+        help="Maximum period in days. Default: full time span.",
+    )
     parser.add_argument("--n-periods", type=int, default=N_PERIODS)
     parser.add_argument("--n-time-centers", type=int, default=N_TIME_CENTERS)
     parser.add_argument(
@@ -304,6 +314,26 @@ def make_period_grid(min_period, max_period, n_periods):
         return np.geomspace(min_period, max_period, n_periods)
 
     return np.linspace(min_period, max_period, n_periods)
+
+
+def resolve_period_limits(t, min_period, max_period):
+    t_sorted = np.sort(t[np.isfinite(t)])
+    time_span = t_sorted[-1] - t_sorted[0]
+    dt = np.diff(t_sorted)
+    dt = dt[np.isfinite(dt) & (dt > 0)]
+
+    if len(dt) == 0:
+        raise ValueError("Cannot determine period limits: no positive time steps found.")
+
+    median_dt = float(np.median(dt))
+
+    if min_period is None:
+        min_period = 2.0 * median_dt
+
+    if max_period is None:
+        max_period = time_span
+
+    return float(min_period), float(max_period), median_dt
 
 
 def make_time_grid(t, n_time_centers):
@@ -597,6 +627,12 @@ time_span = t.max() - t.min()
 if time_span <= 0:
     raise ValueError("Time span must be positive.")
 
+args.min_period, args.max_period, median_time_step = resolve_period_limits(
+    t,
+    args.min_period,
+    args.max_period,
+)
+
 if args.min_period <= 0 or args.max_period <= 0:
     raise ValueError("MIN_PERIOD and MAX_PERIOD must be positive.")
 
@@ -682,6 +718,7 @@ print(f"Wavelet decay mode        : {decay_mode}")
 print(f"Effective wavelet decay   : {effective_wavelet_decay:.12g}")
 print(f"Points used               : {len(t)}")
 print(f"Time span                 : {time_span:.10f} days")
+print(f"Median time step          : {median_time_step:.10f} days")
 print("=" * 70)
 
 wwz, power, n_eff = wavelet_matrix(
@@ -873,9 +910,11 @@ with open(OUTPUT_PERIOD, "w", encoding="utf-8") as f:
     f.write(f"Error column: {err_col if err_col is not None else 'none'}\n")
     f.write(f"Number of points: {len(t)}\n")
     f.write(f"Time span (days): {time_span:.10f}\n")
+    f.write(f"Median time step (days): {median_time_step:.10f}\n")
     f.write(f"Min period searched (days): {period_min:.10f}\n")
     f.write(f"Max period searched (days): {period_max:.10f}\n")
     f.write(f"Period grid: {period_grid_mode}\n")
+    f.write("Automatic period limits follow NASA Exoplanet Archive style settings.\n")
     f.write(f"Map smoothing for PNG only: {args.map_smooth_periods} x {args.map_smooth_times} bins\n")
     f.write(f"Wavelet decay mode: {decay_mode}\n")
     f.write(f"Requested wavelet decay: {args.wavelet_decay}\n")
