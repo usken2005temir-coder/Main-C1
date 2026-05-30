@@ -1,5 +1,5 @@
 === SMART VARIABLE-STAR PERIOD ANALYSIS ===
-Input file: C:\Users\Temirlan\source\repos\Main-C1\clean_data.csv
+Input file: C:\Users\Temirlan\source\repos\Main-C\clean_data.csv
 Time column: JD
 Signal column: Mag
 Signal label: V/R
